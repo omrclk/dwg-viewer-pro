@@ -5,6 +5,7 @@
 .dwg-shell {
   min-height: 100%;
   height: 100%;
+  width: 100%;
   background: #fff;
   color: #222;
   display: flex;
@@ -1495,7 +1496,7 @@ button {
 
 .mobile-viewer .cad-stage {
   inset: 72px 0 calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px);
-  contain: strict;
+  contain: paint;
 }
 
 .desktop-only {
