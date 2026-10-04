@@ -1,0 +1,18 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.dwgviewer.pro',
+  appName: 'DWG FastView',
+  webDir: 'dist',
+  android: {
+    allowMixedContent: true,
+    backgroundColor: '#000000',
+    captureInput: true,
+    adjustMarginsForEdgeToEdge: 'force',
+  },
+  server: {
+    androidScheme: 'https',
+  },
+};
+
+export default config;
