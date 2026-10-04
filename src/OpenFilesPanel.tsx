@@ -58,35 +58,34 @@ export function OpenFilesPanel({
 
       <section className="open-files-section">
         <h3>Bulut</h3>
-        <div className="open-cloud-grid">
-          {cloudProviders.map((provider) => (
-            <button
-              type="button"
-              key={provider.id}
-              className="open-source-btn cloud"
-              style={{ borderColor: `${provider.color}55` }}
-              onClick={() => onPickCloud(provider.id)}
-              disabled={busy}
-            >
-              <Cloud size={16} style={{ color: provider.color }} />
-              <span>
-                <strong>{provider.label}</strong>
-                <small>
-                  {provider.id === 'google-drive' && configured.googleDrive
-                    ? 'Hazir'
-                    : provider.id === 'onedrive' && configured.oneDrive
-                      ? 'Hazir'
-                      : provider.id === 'dropbox' && configured.dropbox
-                        ? 'Hazir'
-                        : 'API anahtari (.env)'}
-                </small>
-              </span>
-            </button>
-          ))}
-        </div>
-        <p className="open-files-note">
-          Android dosya secicide Google Drive ve OneDrive de gorunur. Web bulut dugmeleri OAuth picker kullanir.
-        </p>
+        {cloudProviders.some((provider) =>
+          provider.id === 'google-drive' ? configured.googleDrive : provider.id === 'onedrive' ? configured.oneDrive : configured.dropbox,
+        ) ? (
+          <div className="open-cloud-grid">
+            {cloudProviders.filter((provider) =>
+              provider.id === 'google-drive' ? configured.googleDrive : provider.id === 'onedrive' ? configured.oneDrive : configured.dropbox,
+            ).map((provider) => (
+              <button
+                type="button"
+                key={provider.id}
+                className="open-source-btn cloud"
+                style={{ borderColor: `${provider.color}55` }}
+                onClick={() => onPickCloud(provider.id)}
+                disabled={busy}
+              >
+                <Cloud size={16} style={{ color: provider.color }} />
+                <span>
+                  <strong>{provider.label}</strong>
+                  <small>Hazir</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="open-files-note">
+            Bulut hesaplari kapali. Anahtarlari .env icine yazinca Google Drive, OneDrive ve Dropbox burada gorunur. Android dosya secicisi Drive ve OneDrive dosyalarini zaten acabilir.
+          </p>
+        )}
       </section>
 
       <section className="open-files-section open-files-recent">

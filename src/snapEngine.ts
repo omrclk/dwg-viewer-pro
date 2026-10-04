@@ -68,17 +68,20 @@ export function collectSnapTargets(entities: DrawingEntity[], settings: SnapSett
       pushUnique(targets, { x: entity.cx + entity.r * Math.cos(end), y: entity.cy + entity.r * Math.sin(end) }, 'endpoint')
     }
 
-    if (entity.type === 'polyline') {
+    if (entity.type === 'polyline' || entity.type === 'solid') {
+      const stride = Math.max(1, Math.ceil(entity.points.length / 32))
       entity.points.forEach((point, index) => {
+        if (index % stride !== 0 && index !== entity.points.length - 1) return
         if (settings.endpoint) pushUnique(targets, point, 'endpoint')
-        const next = entity.points[index + 1]
-        if (next) {
+        const closed = entity.type === 'solid' || entity.closed
+        const next = entity.points[index + stride] ?? (closed ? entity.points[0] : undefined)
+        if (next && index + stride <= entity.points.length) {
           segments.push([point, next])
           if (settings.midpoint) {
             pushUnique(targets, { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }, 'midpoint')
           }
         }
-        if (entity.closed && index === entity.points.length - 1 && entity.points.length > 2) {
+        if ((entity.type === 'solid' || entity.closed) && index === entity.points.length - 1 && entity.points.length > 2) {
           const first = entity.points[0]
           segments.push([point, first])
           if (settings.midpoint) {

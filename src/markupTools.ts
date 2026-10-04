@@ -14,6 +14,16 @@ export type MediaMarker = {
   label: string
   color: string
   imageUrl?: string
+  audioUrl?: string
+  videoUrl?: string
+}
+
+export type TextNote = {
+  id: string
+  point: Point2
+  text: string
+  color: string
+  height: number
 }
 
 export function nextNumber(markers: NumberMarker[]) {

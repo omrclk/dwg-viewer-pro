@@ -10,11 +10,14 @@ export type SnapSettings = {
 
 export type PerformanceMode = 'auto' | 'high' | 'low'
 
+export type AppTheme = 'dark' | 'light'
+
 export type AppSettings = {
   snap: SnapSettings
   performanceMode: PerformanceMode
-  theme: 'dark'
+  theme: AppTheme
   measureDecimals: number
+  textHeight: number
 }
 
 const STORAGE_KEY = 'dwg-viewer-settings'
@@ -30,6 +33,7 @@ const defaultSettings: AppSettings = {
   performanceMode: 'auto',
   theme: 'dark',
   measureDecimals: 3,
+  textHeight: 2.5,
 }
 
 export function loadSettings(): AppSettings {
@@ -41,6 +45,8 @@ export function loadSettings(): AppSettings {
       ...defaultSettings,
       ...parsed,
       snap: { ...defaultSettings.snap, ...parsed.snap },
+      theme: parsed.theme === 'light' ? 'light' : 'dark',
+      textHeight: parsed.textHeight ?? defaultSettings.textHeight,
       measureDecimals: parsed.measureDecimals ?? defaultSettings.measureDecimals,
     }
   } catch {

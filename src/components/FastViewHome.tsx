@@ -1,4 +1,4 @@
-import { FolderOpen, Home, MoreVertical, Plus } from 'lucide-react'
+import { FolderOpen, Home, MoreVertical, Plus, Star } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { RecentFileEntry } from '../fileTypes'
 import { formatBytes, sourceLabel } from '../fileTypes'
@@ -11,6 +11,8 @@ type Props = {
   recentFiles: RecentFileEntry[]
   onOpenFile: () => void
   onOpenRecent: (entry: RecentFileEntry) => void
+  onToggleFavorite: (entry: RecentFileEntry) => void
+  onOpenSample: (format: 'dwg' | 'dxf') => void
   onEnterViewer?: () => void
 }
 
@@ -37,12 +39,13 @@ function DemoThumb() {
   )
 }
 
-export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterViewer }: Props) {
+export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onToggleFavorite, onOpenSample, onEnterViewer }: Props) {
   const [tab, setTab] = useState<HomeTab>('recent')
   const [nav, setNav] = useState<HomeNav>('home')
 
   const visibleFiles = useMemo(() => {
-    if (tab === 'favorite') return recentFiles.filter((entry) => entry.name.toLowerCase().includes('fav'))
+    if (tab === 'favorite') return recentFiles.filter((entry) => entry.favorite)
+    if (tab === 'drawings') return []
     return recentFiles
   }, [recentFiles, tab])
 
@@ -52,8 +55,8 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterVie
         <div className="fv-home-brand-row">
           <div className="fv-home-avatar" />
           <div className="fv-home-brand">
-            <span className="fv-home-logo">G</span>
-            <span>DWG FastView</span>
+            <span className="fv-home-logo">D</span>
+            <span>DWG Viewer Pro</span>
           </div>
           <span />
         </div>
@@ -62,7 +65,7 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterVie
             [
               ['recent', 'Son'],
               ['favorite', 'Favori'],
-              ['drawings', 'Çizimler'],
+              ['drawings', 'Ornekler'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -84,16 +87,44 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterVie
           <span className="fv-home-tip-icon">
             <FvDimLinear size={34} />
           </span>
-          <span>Now Try to Use Linear Dimension</span>
+          <span>DWG ve DXF acin, katmanlari kapatin, mesafe ve alan olcun.</span>
         </div>
 
-        {visibleFiles.length === 0 ? (
+        {tab === 'drawings' && (
+          <>
+            <button type="button" className="fv-home-file" onClick={() => onOpenSample('dwg')}>
+              <div className="fv-home-thumb"><DemoThumb /></div>
+              <div>
+                <div className="fv-home-file-name">Ornek plan.dwg</div>
+                <div className="fv-home-file-meta">Katman, blok, tarama, yazi ve olcu</div>
+              </div>
+            </button>
+            <button type="button" className="fv-home-file" onClick={() => onOpenSample('dxf')}>
+              <div className="fv-home-thumb"><DemoThumb /></div>
+              <div>
+                <div className="fv-home-file-name">Ornek plan.dxf</div>
+                <div className="fv-home-file-meta">Ayni planin DXF kopyasi</div>
+              </div>
+            </button>
+            <button type="button" className="fv-home-file" onClick={onEnterViewer}>
+              <div className="fv-home-thumb"><DemoThumb /></div>
+              <div>
+                <div className="fv-home-file-name">Bos goruntuleyici</div>
+                <div className="fv-home-file-meta">Araclari dosya acmadan deneyin</div>
+              </div>
+            </button>
+          </>
+        )}
+
+        {tab !== 'drawings' && visibleFiles.length === 0 && (
           <p className="fv-home-empty">
-            {tab === 'recent' ? 'Henüz dosya açılmadı. + ile dosya ekleyin.' : 'Bu sekmede dosya yok.'}
+            {tab === 'recent' ? 'Henuz dosya acilmadi. + ile cihazdan secin.' : 'Favori dosya yok. Listeden yildiza dokunun.'}
           </p>
-        ) : (
-          visibleFiles.map((entry) => (
-            <button key={entry.id} type="button" className="fv-home-file" onClick={() => onOpenRecent(entry)}>
+        )}
+
+        {tab !== 'drawings' && visibleFiles.map((entry) => (
+          <div key={entry.id} className="fv-home-file">
+            <button type="button" className="fv-home-file-main" onClick={() => onOpenRecent(entry)}>
               <div className="fv-home-thumb">
                 <DemoThumb />
               </div>
@@ -103,40 +134,34 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterVie
                   {formatOpenedAt(entry.openedAt)} · {formatBytes(entry.size)}
                   <br />
                   {sourceLabel(entry.source)}
+                  {!entry.cached ? ' · onbellekte yok' : ''}
                 </div>
               </div>
-              <span className="fv-home-file-menu" aria-hidden="true">
-                <MoreVertical size={18} />
-              </span>
             </button>
-          ))
-        )}
-
-        {!recentFiles.length && (
-          <button type="button" className="fv-home-file" onClick={onEnterViewer}>
-            <div className="fv-home-thumb">
-              <DemoThumb />
-            </div>
-            <div>
-              <div className="fv-home-file-name">Demo çizim — örnek plan</div>
-              <div className="fv-home-file-meta">Hemen görüntülemek için dokunun</div>
-            </div>
-            <span className="fv-home-file-menu" aria-hidden="true">
-              <MoreVertical size={18} />
-            </span>
-          </button>
-        )}
+            <button
+              type="button"
+              className={`fv-home-file-menu${entry.favorite ? ' is-fav' : ''}`}
+              aria-label={entry.favorite ? 'Favoriden cikar' : 'Favoriye ekle'}
+              onClick={() => onToggleFavorite(entry)}
+            >
+              {entry.favorite ? <Star size={18} fill="currentColor" /> : <MoreVertical size={18} />}
+            </button>
+          </div>
+        ))}
       </div>
 
       <button type="button" className="fv-home-fab" aria-label="Dosya ekle" onClick={onOpenFile}>
         <Plus size={28} strokeWidth={2.2} />
       </button>
 
-      <nav className="fv-home-bottom" aria-label="Ana menü">
+      <nav className="fv-home-bottom" aria-label="Ana menu">
         <button
           type="button"
           className={`fv-home-bottom-btn${nav === 'home' ? ' active' : ''}`}
-          onClick={() => setNav('home')}
+          onClick={() => {
+            setNav('home')
+            setTab('recent')
+          }}
         >
           <Home size={22} strokeWidth={2} />
           <span>Ev</span>
@@ -161,9 +186,9 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onEnterVie
           }}
         >
           <span className="fv-home-logo" style={{ width: 22, height: 22, fontSize: 11, borderRadius: 4 }}>
-            G
+            D
           </span>
-          <span>My Cloud</span>
+          <span>Bulut</span>
         </button>
       </nav>
     </div>

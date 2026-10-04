@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.dwgviewer.pro',
-  appName: 'DWG FastView',
+  appName: 'DWG Viewer Pro',
   webDir: 'dist',
   android: {
     allowMixedContent: true,

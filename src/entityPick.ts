@@ -50,9 +50,18 @@ export function findNearestEntity(point: Point2, entities: DrawingEntity[], tole
       }
     }
 
-    if (entity.type === 'polyline') {
+    if (entity.type === 'text') {
+      const dist = distance(point, { x: entity.x, y: entity.y })
+      if (dist < bestDistance) {
+        bestDistance = dist
+        best = { entity, layer: entity.layer, kind: 'Metin', distance: dist }
+      }
+    }
+
+    if (entity.type === 'polyline' || entity.type === 'solid') {
       entity.points.forEach((start, index) => {
-        const end = entity.points[index + 1] ?? (entity.closed ? entity.points[0] : null)
+        const closed = entity.type === 'polyline' && entity.closed
+        const end = entity.points[index + 1] ?? (closed ? entity.points[0] : null)
         if (!end) return
         const dist = pointToSegmentDistance(point, start, end)
         if (dist < bestDistance) {

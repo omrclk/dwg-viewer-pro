@@ -22,7 +22,7 @@ export function SavedMeasuresLayer({
   if (!records.length || hidden) return null
 
   return (
-    <svg className="measure-svg measure-saved" viewBox={`0 0 ${VIEW_BOX.width} ${VIEW_BOX.height}`} aria-hidden>
+    <svg className="measure-svg measure-saved" viewBox={`0 0 ${dxfTransform?.viewWidth ?? VIEW_BOX.width} ${dxfTransform?.viewHeight ?? VIEW_BOX.height}`} aria-hidden>
       {records.map((record) => {
         const points = record.points.map((point) => toView(point, coordMode, dxfTransform))
         if (points.length < 1) return null

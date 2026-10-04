@@ -131,7 +131,7 @@ export function SketchLayer({
   if (!allShapes.length) return null
 
   return (
-    <svg className="sketch-overlay" viewBox={`0 0 ${VIEW_BOX.width} ${VIEW_BOX.height}`} aria-hidden="true">
+    <svg className="sketch-overlay" viewBox={`0 0 ${dxfTransform?.viewWidth ?? VIEW_BOX.width} ${dxfTransform?.viewHeight ?? VIEW_BOX.height}`} aria-hidden="true">
       {allShapes.map((shape) => renderShape(shape, coordMode, dxfTransform))}
     </svg>
   )

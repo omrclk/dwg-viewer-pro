@@ -1,50 +1,106 @@
-# React + TypeScript + Vite
+# DWG Viewer Pro
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Android uygulaması: DWG ve DXF çizimlerini açar, katmanları kapatır, mesafe / alan / açı ölçer, işaretleme ekler ve PDF veya görsel olarak paylaşır. Paket adı `com.dwgviewer.pro`.
 
-Currently, two official plugins are available:
+Web arayüzü React 18, TypeScript, Vite ve Tailwind ile yazıldı. Android kabuğu Capacitor 7.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Ne açılır
 
-## Expanding the ESLint configuration
+- DWG: `@node-projects/acad-ts` (MIT). Sürümler AC1014–AC1032 (R14’ten AutoCAD 2018’e). Ticari kapalı kaynak dağıtım bu lisansla uyumludur. LibreDWG (GPL-3) ve ücretli ODA SDK kullanılmaz.
+- DXF: aynı kütüphane, ASCII DXF okunamazsa projedeki ayrıştırıcıya düşer.
+- PDF: yerleşik önizleme.
+- DWF: bu sürümde açılmaz. Çizimi DWG veya DXF olarak kaydedin.
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+Ortak nesneler: çizgi, polyline / lwpolyline (bulge dahil), yay, daire, elips, spline, yazı / mtext, ölçü, tarama, blok ve iç içe insert, katman rengi ve çizgi tipi, model ve kağıt düzenleri.
 
-- Configure the top-level `parserOptions` property like this:
+## Ücretsiz ve Pro
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+Tek seferlik Google Play ürünü: `com.dwgviewer.pro.unlock`.
+
+Ücretsiz planda 8 ölçüm kaydı vardır. Dışa aktarılan PDF ve görsele küçük bir filigran eklenir. Gelişmiş menü araçları (VIP) Pro kilidindedir. Satın alma yalnızca Play Store’dan yüklenen Android sürümünde çalışır. Web önizlemesinde ödeme yoktur ve sahte satın alma yazılmaz.
+
+## Geliştirme
+
+Gerekenler: Node 20+, pnpm 11, JDK 21, Android SDK 35 ve build-tools 35.0.0.
+
+```bash
+pnpm install
+pnpm test
+pnpm dev --host 127.0.0.1 --port 43123
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+Üretim web paketi ve Android senkronu:
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```bash
+pnpm run android:sync
 ```
+
+`android/local.properties` içine SDK yolunu yazın (bu dosya git’e girmez):
+
+```
+sdk.dir=/absolute/path/Android/sdk
+```
+
+Hata ayıklama APK:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+Çıktı: `android/app/build/outputs/apk/debug/app-debug.apk`
+
+İmzasız yayın paketi (AAB). Release derlemesi küçültme ve ProGuard kullanır:
+
+```bash
+cd android
+./gradlew bundleRelease
+```
+
+AGP imzasız release paketini reddederse, kendi anahtarınızla imzalayın. Depoya anahtar koymayın.
+
+## İmzalama
+
+```bash
+keytool -genkeypair -v -keystore dwg-viewer-upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+```
+
+`android/app/build.gradle` içinde `signingConfigs` tanımlayıp `release` build type’a bağlayın. Şifreleri ortam değişkeninden okuyun. Play App Signing açıksa yükleme anahtarı ile Play’in uygulama anahtarı ayrıdır. Anahtarı yedekleyin.
+
+## Play Billing
+
+1. Play Console’da uygulama `com.dwgviewer.pro` olsun.
+2. Tek seferlik ürün oluşturun. Ürün kimliği tam olarak `com.dwgviewer.pro.unlock`.
+3. Fiyatı seçin ve ürünü etkinleştirin.
+4. Lisans testi hesabı ekleyin.
+5. İmzasız veya dahili test kanalına imzalı AAB yükleyin. Satın alma yalnızca bu kurulumda tamamlanır.
+
+Eklenti: `@capgo/native-purchases`. Satın alma otomatik onaylanır. “Satın almayı geri yükle” Play hesabındaki hakkı yeniden okur.
+
+## Bulut
+
+Google Drive, OneDrive ve Dropbox düğmeleri yalnızca ilgili anahtarlar varsa görünür. Anahtar yoksa düğme yoktur.
+
+`.env` örneği:
+
+```
+VITE_GOOGLE_CLIENT_ID=
+VITE_GOOGLE_API_KEY=
+VITE_ONEDRIVE_CLIENT_ID=
+VITE_DROPBOX_APP_KEY=
+```
+
+## Gizlilik
+
+Mağaza gizlilik URL’si için `public/privacy.html` metnini kendi sitenize koyun. Uygulama içindeki Gizlilik düğmesi aynı özeti gösterir.
+
+## Mağaza metni
+
+Türkçe ve İngilizce taslak: `store/PLAY_LISTING.md`.
+
+## Sınırlar
+
+- Çok yeni DWG sürümleri (2018 sonrası) acad-ts tarafından okunmayabilir.
+- DWF desteklenmez.
+- Büyük dosyada ücretsiz performans modu ekrana çizilen nesne sayısını sınırlar. Ayarlardan kapatılır.
+- Ölçü nesnesinin kendi bloğu boşsa düz bir ölçü çizgisi çizilir.

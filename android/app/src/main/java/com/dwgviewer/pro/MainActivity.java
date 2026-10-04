@@ -31,6 +31,7 @@ public class MainActivity extends BridgeActivity {
     private static final String OPEN_FILE_EVENT = "dwg-viewer-open-file";
     private static final String OPEN_ERROR_EVENT = "dwg-viewer-open-error";
     private boolean nativeBridgeInstalled = false;
+    private byte[] pendingFileBytes;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -170,8 +171,15 @@ public class MainActivity extends BridgeActivity {
         payload.put("name", displayName);
         payload.put("mimeType", mimeType);
         payload.put("size", bytes.length);
-        payload.put("sourcePath", "WhatsApp / Android dosya paylasimi > " + displayName);
-        payload.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        payload.put("sourcePath", "Paylasim > " + displayName);
+        if (bytes.length > 350_000) {
+            pendingFileBytes = bytes;
+            payload.put("chunked", true);
+        } else {
+            pendingFileBytes = null;
+            payload.put("chunked", false);
+            payload.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        }
         return payload;
     }
 
@@ -256,6 +264,19 @@ public class MainActivity extends BridgeActivity {
     }
 
     private class NativeActions {
+        @JavascriptInterface
+        public String pullChunk(int offset, int length) {
+            byte[] data = pendingFileBytes;
+            if (data == null || offset < 0 || length <= 0 || offset >= data.length) return "";
+            int end = Math.min(data.length, offset + length);
+            return Base64.encodeToString(java.util.Arrays.copyOfRange(data, offset, end), Base64.NO_WRAP);
+        }
+
+        @JavascriptInterface
+        public void clearPending() {
+            pendingFileBytes = null;
+        }
+
         @JavascriptInterface
         public void print() {
             runOnUiThread(() -> {

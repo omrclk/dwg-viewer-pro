@@ -1,4 +1,4 @@
-import type { DrawingEntity } from './drawingTypes'
+import type { DrawingDocument, DrawingEntity } from './drawingTypes'
 
 export type SupportedFormat = 'dwg' | 'dxf' | 'dwf' | 'pdf'
 
@@ -11,7 +11,10 @@ export type OpenedFile = {
   source: FileSource
   url?: string
   entities?: DrawingEntity[]
+  document?: DrawingDocument
+  layoutName?: string
   message?: string
+  favorite?: boolean
 }
 
 export type RecentFileEntry = {
@@ -22,6 +25,7 @@ export type RecentFileEntry = {
   source: FileSource
   openedAt: string
   cached: boolean
+  favorite?: boolean
 }
 
 export const SUPPORTED_EXTENSIONS = ['dwg', 'dxf', 'dwf', 'pdf'] as const

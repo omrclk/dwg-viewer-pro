@@ -31,7 +31,7 @@ import { buildOpenedFile } from './fileOpenService'
 import type { FileSource, OpenedFile, RecentFileEntry } from './fileTypes'
 import { formatBytes, sourceLabel } from './fileTypes'
 import { OpenFilesPanel } from './OpenFilesPanel'
-import { listRecentFiles, loadCachedFile } from './recentFiles'
+import { listRecentFiles, loadCachedFile, toggleRecentFavorite } from './recentFiles'
 import { boundsForEntities, buildDxfTransform } from './dxfTransform'
 import {
   actionIdToDrawTool,
@@ -58,7 +58,7 @@ import {
   type EditTool,
 } from './editTools'
 import { MarkupLayer } from './MarkupLayer'
-import { nextNumber, type MediaMarker, type NumberMarker } from './markupTools'
+import { nextNumber, type MediaMarker, type NumberMarker, type TextNote } from './markupTools'
 import { SettingsPanel } from './components/SettingsPanel'
 import { buildMeasureRecord, calibrationFactor, canFinalize, requiredPointCount } from './measureActions'
 import type { MeasureRecord, Point2 } from './measureMath'
@@ -83,14 +83,26 @@ import type { MainCategory } from './fastview/menuConfig'
 import { subMenuRows } from './fastview/menuConfig'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { VIEW_BOX } from './dxfTransform'
+import { CadCanvas } from './components/CadCanvas'
+import { UpgradeSheet } from './components/UpgradeSheet'
+import { FREE_MEASURE_LIMIT } from './billing/products'
+import { loadEntitlement, loadProProduct, purchasePro, refreshEntitlement, restorePro as restoreProPurchase } from './billing/entitlement'
+import { exportDrawingPdf, exportDrawingPng } from './exportShare'
+import { SUB_MENUS } from './fastview/menuConfig'
 
 declare global {
   interface Window {
     DwgNative?: {
       print: () => void
+      pullChunk?: (offset: number, length: number) => string
+      clearPending?: () => void
     }
   }
 }
+
+const VIP_ACTIONS = new Set(
+  Object.values(SUB_MENUS).flatMap((items) => items.filter((item) => item.vip).map((item) => item.id)),
+)
 
 const DEMO_LAYERS = ['A-PLAN', 'S-STRUCT', 'A-ELEV', 'A-GRID', 'TEXT'] as const
 
@@ -110,6 +122,8 @@ type ExternalFilePayload = {
   name?: string
   mimeType?: string
   base64?: string
+  size?: number
+  chunked?: boolean
   sourcePath?: string
   message?: string
 }
@@ -199,23 +213,29 @@ function clampScale(scale: number) {
   return Math.min(MAX_VIEW_SCALE, Math.max(MIN_VIEW_SCALE, scale))
 }
 
-function fileFromBase64Payload(payload: ExternalFilePayload) {
-  if (!payload.base64) throw new Error('Dosya verisi alinamadi.')
+function bytesFromBase64(value: string) {
+  const binary = window.atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
 
-  const binary = window.atob(payload.base64)
-  const chunks: Uint8Array[] = []
-  const chunkSize = 32768
-
-  for (let offset = 0; offset < binary.length; offset += chunkSize) {
-    const chunk = binary.slice(offset, offset + chunkSize)
-    const bytes = new Uint8Array(chunk.length)
-    for (let index = 0; index < chunk.length; index += 1) {
-      bytes[index] = chunk.charCodeAt(index)
+function fileFromPayload(payload: ExternalFilePayload) {
+  if (payload.chunked && window.DwgNative?.pullChunk && payload.size) {
+    const parts: Uint8Array[] = []
+    const slice = 256 * 1024
+    for (let offset = 0; offset < payload.size; offset += slice) {
+      const encoded = window.DwgNative.pullChunk(offset, Math.min(slice, payload.size - offset))
+      if (!encoded) throw new Error('Dosya parcasi okunamadi.')
+      parts.push(bytesFromBase64(encoded))
     }
-    chunks.push(bytes)
+    window.DwgNative.clearPending?.()
+    return new File(parts, payload.name || 'paylasilan-cizim.dwg', {
+      type: payload.mimeType || 'application/octet-stream',
+    })
   }
-
-  return new File(chunks, payload.name || 'whatsapp-drawing.dwg', {
+  if (!payload.base64) throw new Error('Dosya verisi alinamadi.')
+  return new File([bytesFromBase64(payload.base64)], payload.name || 'paylasilan-cizim.dwg', {
     type: payload.mimeType || 'application/octet-stream',
   })
 }
@@ -234,6 +254,7 @@ type ViewportHandle = {
   zoomIn: () => void
   zoomOut: () => void
   fit: () => void
+  zoomToScreenRect: (rect: { x1: number; y1: number; x2: number; y2: number }) => void
 }
 
 function DrawingViewport({
@@ -287,12 +308,36 @@ function DrawingViewport({
     fitToScreen()
   }, [resetKey, fitToScreen])
 
+  const zoomToScreenRect = useCallback((rect: { x1: number; y1: number; x2: number; y2: number }) => {
+    const host = hostRef.current
+    if (!host) return
+    const hostRect = host.getBoundingClientRect()
+    const x1 = Math.min(rect.x1, rect.x2)
+    const y1 = Math.min(rect.y1, rect.y2)
+    const width = Math.abs(rect.x2 - rect.x1)
+    const height = Math.abs(rect.y2 - rect.y1)
+    if (width < 12 || height < 12) return
+    setViewport((current) => {
+      const factor = Math.min(hostRect.width / width, hostRect.height / height)
+      const nextScale = clampScale(current.scale * factor)
+      const centerX = x1 + width / 2
+      const centerY = y1 + height / 2
+      const localX = (centerX - current.panX) / current.scale
+      const localY = (centerY - current.panY) / current.scale
+      return {
+        scale: nextScale,
+        panX: hostRect.width / 2 - localX * nextScale,
+        panY: hostRect.height / 2 - localY * nextScale,
+      }
+    })
+  }, [])
+
   useEffect(() => {
-    actionsRef.current = { zoomIn, zoomOut, fit: fitToScreen }
+    actionsRef.current = { zoomIn, zoomOut, fit: fitToScreen, zoomToScreenRect }
     return () => {
       actionsRef.current = null
     }
-  }, [actionsRef, fitToScreen, zoomIn, zoomOut])
+  }, [actionsRef, fitToScreen, zoomIn, zoomOut, zoomToScreenRect])
 
   useEffect(() => {
     onViewportChange?.(viewport)
@@ -632,8 +677,13 @@ function DxfDrawing({
             return <path className="opened-line" key={index} d={arcPath(entity)} />
           }
 
-          const points = entity.points.map((point) => `${toX(point.x)},${toY(point.y)}`).join(' ')
-          return <polyline className="opened-line" key={index} points={points} {...(entity.closed ? { 'data-closed': 'true' } : {})} />
+          if (entity.type === 'polyline' || entity.type === 'solid') {
+            const points = entity.points.map((point) => `${toX(point.x)},${toY(point.y)}`).join(' ')
+            const closed = entity.type === 'polyline' && entity.closed
+            return <polyline className="opened-line" key={index} points={points} {...(closed ? { 'data-closed': 'true' } : {})} />
+          }
+
+          return null
         })}
       </g>
     </svg>
@@ -663,6 +713,8 @@ function App() {
   const [measurePanelOpen, setMeasurePanelOpen] = useState(false)
   const [measureOverlaysHidden, setMeasureOverlaysHidden] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const audioInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
   const editTargetRef = useRef<SketchShape | null>(null)
   const [customLayers, setCustomLayers] = useState<string[]>([])
   const [defaultLayer, setDefaultLayer] = useState('0')
@@ -688,6 +740,8 @@ function App() {
   const [numberMarkers, setNumberMarkers] = useState<NumberMarker[]>([])
   const [mediaMarkers, setMediaMarkers] = useState<MediaMarker[]>([])
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
+  const [pendingAudioUrl, setPendingAudioUrl] = useState<string | null>(null)
+  const [pendingVideoUrl, setPendingVideoUrl] = useState<string | null>(null)
   const [comments, setComments] = useState<CommentRecord[]>([])
   const [activeMarkupColor, setActiveMarkupColor] = useState('#18f4ea')
   const [notice, setNotice] = useState('')
@@ -698,12 +752,25 @@ function App() {
   const snapRafRef = useRef<number | null>(null)
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadSettings())
   const [snapPreview, setSnapPreview] = useState<{ point: Point2; kind: SnapKind } | null>(null)
+  const [pro, setPro] = useState(() => loadEntitlement().pro)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [upgradeBusy, setUpgradeBusy] = useState(false)
+  const [upgradeError, setUpgradeError] = useState('')
+  const [priceLabel, setPriceLabel] = useState('Google Play fiyati')
+  const [viewSize, setViewSize] = useState({ width: 390, height: 760 })
+  const [zoomWindowMode, setZoomWindowMode] = useState(false)
+  const [textNotes, setTextNotes] = useState<TextNote[]>([])
+  const [pendingText, setPendingText] = useState<string | null>(null)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
+  const [mediaPreview, setMediaPreview] = useState<MediaMarker | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+  const zoomDrag = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const online = useOnlineStatus()
   const lowPerf = useMemo(() => resolvePerformanceMode(appSettings.performanceMode), [appSettings.performanceMode])
   const entityLimit = entityRenderLimit(lowPerf)
-  const viewportResetKey = openedFile ? `${openedFile.name}-${openedFile.format}` : 'demo'
+  const viewportResetKey = openedFile ? `${openedFile.name}-${openedFile.format}-${openedFile.layoutName ?? ''}` : 'demo'
 
-  const dxfEntities = openedFile?.format === 'dxf' ? openedFile.entities : undefined
+  const dxfEntities = openedFile && openedFile.format !== 'pdf' ? openedFile.entities : undefined
   const layerList = useMemo(() => {
     const base = dxfEntities?.length ? layersFromEntities(dxfEntities) : [...DEMO_LAYERS]
     return [...new Set([...base, ...customLayers])].sort((a, b) => a.localeCompare(b, 'tr'))
@@ -719,10 +786,32 @@ function App() {
   )
   const coordMode = visibleDxfEntities.length ? 'dxf' : 'demo'
   const dxfTransform = useMemo(
-    () => (visibleDxfEntities.length ? buildDxfTransform(boundsForEntities(visibleDxfEntities)) : undefined),
-    [visibleDxfEntities],
+    () => (visibleDxfEntities.length ? buildDxfTransform(boundsForEntities(visibleDxfEntities), viewSize.width, viewSize.height) : undefined),
+    [viewSize.height, viewSize.width, visibleDxfEntities],
   )
   const measureHint = activeMeasureMode ? MEASURE_HINTS[activeMeasureMode] : ''
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-dark', appSettings.theme === 'dark')
+    document.documentElement.classList.toggle('theme-light', appSettings.theme === 'light')
+  }, [appSettings.theme])
+
+  useEffect(() => {
+    const element = contentRef.current
+    if (!element || screen !== 'viewer') return
+    const update = () => setViewSize({ width: Math.max(1, element.clientWidth), height: Math.max(1, element.clientHeight) })
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [screen, openedFile?.name, openedFile?.layoutName])
+
+  useEffect(() => {
+    void refreshEntitlement().then((entitlement) => setPro(entitlement.pro))
+    void loadProProduct().then((product) => {
+      if (product?.priceString) setPriceLabel(product.priceString)
+    })
+  }, [])
 
   const notify = useCallback((message: string) => {
     setNotice(message)
@@ -946,6 +1035,12 @@ function App() {
       return
     }
 
+    if (!pro && measureRecords.length >= FREE_MEASURE_LIMIT) {
+      setUpgradeOpen(true)
+      notify(`Ucretsiz planda ${FREE_MEASURE_LIMIT} olcum siniri doldu.`)
+      return
+    }
+
     const record = buildMeasureRecord(mode, points, unitsPerDrawingUnit, unitLabel, {
       label:
         measureSession === 'radius' ? 'Radius' : measureSession === 'diameter' ? 'Cap' : undefined,
@@ -1048,6 +1143,21 @@ function App() {
   }
 
   const handleFastViewSubAction = (actionId: string) => {
+    if (VIP_ACTIONS.has(actionId) && !pro) {
+      setUpgradeOpen(true)
+      notify('Bu arac Pro kilidinde.')
+      return
+    }
+    if (actionId === 'ann-text' || actionId === 'draw-text') {
+      const text = window.prompt('Cizime eklenecek metin')
+      const trimmed = text?.trim()
+      if (!trimmed) return
+      setPendingText(trimmed)
+      setMarkupPlaceMode(null)
+      setDrawModeOpen(false)
+      notify('Metni yerlestirmek icin cizime dokunun.')
+      return
+    }
     if (actionId === 'layer-list') {
       setLayersPanelOpen(true)
       notify('Katman listesi acildi.')
@@ -1203,11 +1313,11 @@ function App() {
       return
     }
     if (actionId === 'ann-audio') {
-      selectMarkupPlace(actionId, 'audio')
+      audioInputRef.current?.click()
       return
     }
     if (actionId === 'ann-video') {
-      selectMarkupPlace(actionId, 'video')
+      videoInputRef.current?.click()
       return
     }
     if (actionId === 'ann-image') {
@@ -1256,14 +1366,95 @@ function App() {
       return
     }
     if (action === 'layout') {
-      togglePerformanceMode()
+      const layouts = openedFile?.document?.layouts ?? []
+      if (layouts.length < 2) {
+        togglePerformanceMode()
+        notify('Bu cizimde tek duzen var. Performans modu degisti.')
+        return
+      }
+      const current = openedFile?.layoutName ?? 'Model'
+      const index = layouts.findIndex((layout) => layout.name === current)
+      const next = layouts[(index + 1) % layouts.length]
+      setOpenedFile((file) => (file ? { ...file, entities: next.entities, layoutName: next.name, summary: `${next.entities.length} varlik · ${next.name}` } : file))
+      notify(`${next.name} duzeni acildi.`)
       return
     }
     if (action === 'zoomWindow') {
-      viewportRef.current?.zoomIn()
+      setZoomWindowMode((current) => !current)
+      notify(zoomWindowMode ? 'Pencere yakinlastirma kapandi.' : 'Yakinlastirilacak alani surukleyin.')
       return
     }
     handleToolbarAction(action)
+  }
+
+  const shareDrawing = async (kind: 'png' | 'pdf') => {
+    const entities = openedFile?.entities
+    if (!entities?.length) {
+      notify('Disa aktarilacak cizim yok.')
+      return
+    }
+    try {
+      const base = (openedFile?.name ?? 'cizim').replace(/\.[^.]+$/, '')
+      const watermark = pro ? null : 'DWG Viewer'
+      if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark)
+      else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark)
+      notify(kind === 'pdf' ? 'PDF paylasildi.' : 'Gorsel paylasildi.')
+    } catch (exportError) {
+      notify(exportError instanceof Error ? exportError.message : 'Disa aktarma basarisiz.')
+    }
+  }
+
+  const buyPro = async () => {
+    setUpgradeBusy(true)
+    setUpgradeError('')
+    try {
+      const entitlement = await purchasePro()
+      setPro(entitlement.pro)
+      if (entitlement.pro) {
+        setUpgradeOpen(false)
+        notify('Pro acildi.')
+      }
+    } catch (purchaseError) {
+      setUpgradeError(purchaseError instanceof Error ? purchaseError.message : 'Satin alma tamamlanamadi.')
+    } finally {
+      setUpgradeBusy(false)
+    }
+  }
+
+  const handleRestorePro = async () => {
+    setUpgradeBusy(true)
+    setUpgradeError('')
+    try {
+      const entitlement = await restoreProPurchase()
+      setPro(entitlement.pro)
+      notify(entitlement.pro ? 'Satin alma geri yuklendi.' : 'Geri yuklenecek satin alma yok.')
+      if (entitlement.pro) setUpgradeOpen(false)
+    } catch (restoreError) {
+      setUpgradeError(restoreError instanceof Error ? restoreError.message : 'Geri yukleme basarisiz.')
+    } finally {
+      setUpgradeBusy(false)
+    }
+  }
+
+  const openSample = async (format: 'dwg' | 'dxf') => {
+    setFileBusy(true)
+    setOpenStatus('Ornek plan hazirlaniyor...')
+    try {
+      if (format === 'dwg') {
+        const { sampleDwgBytes } = await import('./cad/samplePlan')
+        const bytes = sampleDwgBytes()
+        const file = new File([bytes], 'ornek-plan.dwg', { type: 'application/octet-stream' })
+        await openFromFile(file, 'device', false, 'Ornekler > ornek-plan.dwg')
+        return
+      }
+      const { SAMPLE_RICH_DXF } = await import('./cad/samplePlan')
+      const file = new File([SAMPLE_RICH_DXF], 'ornek-plan.dxf', { type: 'application/dxf' })
+      await openFromFile(file, 'device', false, 'Ornekler > ornek-plan.dxf')
+    } catch (sampleError) {
+      setError(sampleError instanceof Error ? sampleError.message : 'Ornek cizim acilamadi.')
+    } finally {
+      setFileBusy(false)
+    }
   }
 
   const enterViewer = () => {
@@ -1305,6 +1496,8 @@ function App() {
 
     setError('')
     setOpenedFile(result.file)
+    const hidden = new Set((result.file.document?.layers ?? []).filter((layer) => !layer.visible).map((layer) => layer.name))
+    setHiddenLayers(hidden)
     setOpenPanelOpen(false)
     setOpenStatus('')
     setScreen('viewer')
@@ -1332,15 +1525,15 @@ function App() {
       const detail = (event as CustomEvent<ExternalFilePayload>).detail
       if (!detail) return
       if (detail.id && lastExternalFileIdRef.current === detail.id) return
-      if (detail.id) lastExternalFileIdRef.current = detail.id
 
       setError('')
       setOpenPanelOpen(false)
 
       try {
-        const file = fileFromBase64Payload(detail)
-        await openFromFile(file, 'device', false, detail.sourcePath || `WhatsApp > ${file.name}`)
-        notify('WhatsApp dosyasi acildi.')
+        const file = fileFromPayload(detail)
+        await openFromFile(file, 'device', false, detail.sourcePath || `Paylasim > ${file.name}`)
+        if (detail.id) lastExternalFileIdRef.current = detail.id
+        notify('Paylasilan dosya acildi.')
       } catch (openError) {
         const message = openError instanceof Error ? openError.message : 'WhatsApp dosyasi acilamadi.'
         setError(message)
@@ -1359,6 +1552,8 @@ function App() {
       window.removeEventListener('dwg-viewer-open-file', handleExternalFile)
       window.removeEventListener('dwg-viewer-open-error', handleExternalError)
     }
+    // Mount-only: the native bridge dispatches the open event after the WebView is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1596,6 +1791,7 @@ function App() {
     }
 
     if (markupPlaceMode === 'audio' || markupPlaceMode === 'video') {
+      const mediaUrl = markupPlaceMode === 'audio' ? pendingAudioUrl : pendingVideoUrl
       setMediaMarkers((current) => [
         ...current,
         {
@@ -1604,6 +1800,8 @@ function App() {
           point,
           label: markupPlaceMode === 'audio' ? 'Ses notu' : 'Video notu',
           color: activeMarkupColor,
+          audioUrl: markupPlaceMode === 'audio' ? mediaUrl ?? undefined : undefined,
+          videoUrl: markupPlaceMode === 'video' ? mediaUrl ?? undefined : undefined,
         },
       ])
       setComments((current) => [
@@ -1642,6 +1840,43 @@ function App() {
     const url = URL.createObjectURL(file)
     setPendingImageUrl(url)
     selectMarkupPlace('ann-image', 'image')
+  }
+
+  const handleAudioPick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPendingAudioUrl(URL.createObjectURL(file))
+    selectMarkupPlace('ann-audio', 'audio')
+    notify('Ses notunu yerlestirmek icin cizime dokunun.')
+  }
+
+  const handleVideoPick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPendingVideoUrl(URL.createObjectURL(file))
+    selectMarkupPlace('ann-video', 'video')
+    notify('Video notunu yerlestirmek icin cizime dokunun.')
+  }
+
+  const placeTextNote = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pendingText) return
+    const point = resolveSketchPoint(event.clientX, event.clientY)
+    if (!point) return
+    event.stopPropagation()
+    setTextNotes((current) => [
+      ...current,
+      {
+        id: `txt-${Date.now()}`,
+        point,
+        text: pendingText,
+        color: activeMarkupColor,
+        height: appSettings.textHeight,
+      },
+    ])
+    setPendingText(null)
+    notify('Metin yerlestirildi.')
   }
 
   const updateAppSettings = (next: AppSettings) => {
@@ -1833,7 +2068,7 @@ function App() {
     } else if (action === 'fileInfo') {
       window.alert(fileInfoText())
     } else if (action === 'export') {
-      exportWorkspace('export')
+      setExportOpen(true)
     } else if (action === 'help') {
       window.alert('CAD gorunumunde iki parmakla yakinlastirabilir, surukleyerek gezebilir ve alt olcum araclariyla mesafe/alan/nokta olcebilirsiniz.')
     } else if (action === 'toggleAnnotations') {
@@ -1951,7 +2186,7 @@ function App() {
   }
 
   return (
-    <main className={`dwg-shell${screen === 'viewer' ? ' theme-dark' : ''}${lowPerf ? ' perf-low' : ''}`} aria-label="DWG FastView">
+    <main className={`dwg-shell theme-${appSettings.theme}${lowPerf ? ' perf-low' : ''}`} aria-label="DWG FastView">
       <input
         ref={imageInputRef}
         className="file-input"
@@ -1959,6 +2194,8 @@ function App() {
         accept="image/*"
         onChange={handleImagePick}
       />
+      <input ref={audioInputRef} className="file-input" type="file" accept="audio/*" onChange={handleAudioPick} />
+      <input ref={videoInputRef} className="file-input" type="file" accept="video/*" onChange={handleVideoPick} />
       <input
         ref={inputRef}
         className="file-input"
@@ -1973,6 +2210,13 @@ function App() {
             recentFiles={recentList}
             onOpenFile={() => setOpenPanelOpen(true)}
             onOpenRecent={handleOpenRecent}
+            onToggleFavorite={(entry) => {
+              toggleRecentFavorite(entry.id)
+              setRecentList(listRecentFiles())
+            }}
+            onOpenSample={(format) => {
+              void openSample(format)
+            }}
             onEnterViewer={enterViewer}
           />
           {openPanelOpen && (
@@ -2005,8 +2249,8 @@ function App() {
           onClose={exitViewer}
           onAction={handleTopBarAction}
           onTextStyle={() => {
-            setCommentsPanelOpen(true)
-            notify('Metin stili ayarlari.')
+            setSettingsPanelOpen(true)
+            notify('Metin yuksekligi ayarlardan degisir.')
           }}
         />
 
@@ -2025,61 +2269,21 @@ function App() {
             onViewportChange={setViewport}
           >
             <div className="viewport-content" ref={contentRef}>
-              <svg className={`cad-drawing${lowPerf ? ' perf-simple' : ''}`} viewBox="0 0 390 760" role="img">
-                <rect width="390" height="760" fill="#000" />
-                <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <g visibility={layerVisibility(hiddenLayers, 'A-PLAN')}>
-                    <path className="line cyan" d="M18 120 L92 120 L92 212 L18 212 Z M38 142 L76 142 L76 190 L38 190 Z" />
-                    <path className="line cyan" d="M2 470 L64 436 L125 452 L125 541 L75 560 L75 492 L2 523 Z" />
-                    <path className="line cyan thin" d="M15 497 L72 468 L110 478 M31 522 L73 502 M74 493 L124 473" />
-                  </g>
-                  <g visibility={layerVisibility(hiddenLayers, 'S-STRUCT')}>
-                    <path className="line green" d="M185 248 L244 220 L314 250 L252 286 Z M185 248 L185 302 L251 339 L251 286 M314 250 L314 304 L251 339" />
-                    <path className="line green thin" d="M205 254 L244 236 L291 256 M214 272 L252 293 L292 270 M201 287 L252 315 L302 289" />
-                  </g>
-                  <g visibility={layerVisibility(hiddenLayers, 'A-ELEV')}>
-                    <path className="line red" d="M177 562 L292 494 L381 542 M205 593 L320 524 M224 625 L358 548" />
-                    <path className="line red thin" d="M199 548 L298 490 M233 575 L337 516 M270 602 L386 536" />
-                  </g>
-                  <g visibility={layerVisibility(hiddenLayers, 'A-GRID')}>
-                    <path className="line yellow" d="M139 82 L139 344 L373 344 L373 82 Z" />
-                    <path className="line yellow thin" d="M139 170 L373 170 M139 257 L373 257 M218 82 L218 344 M296 82 L296 344" />
-                  </g>
-                </g>
-                <g className="cad-copy" visibility={layerVisibility(hiddenLayers, 'TEXT')}>
-                  <text x="28" y="92">PLOT A-204</text>
-                  <text x="28" y="105">SCALE 1:75</text>
-                  <text x="184" y="430">SECTION DETAIL</text>
-                  <text x="184" y="443">REFERENCE LEVEL +4.500</text>
-                  <text x="285" y="430">STRUCTURAL GRID</text>
-                  <text x="285" y="443">DWG PLAN REV B</text>
-                  <text x="20" y="602">ELEVATION NORTH</text>
-                  <text x="20" y="615">MEASURED IN METERS</text>
-                </g>
-              </svg>
-
-              {openedFile && (
-                <div className="opened-drawing-surface">
-                  {openedFile.format === 'pdf' && openedFile.url && (
+              {openedFile?.format === 'pdf' && openedFile.url ? (
                 <iframe className="pdf-frame" title={openedFile.name} src={openedFile.url} />
-              )}
-
-                  {openedFile.format === 'dxf' && openedFile.entities && (
-                    <DxfDrawing
-                      entities={openedFile.entities}
-                      hiddenLayers={hiddenLayers}
-                      lowPerf={lowPerf}
-                      entityLimit={entityLimit}
-                    />
-                  )}
-
-                  {(openedFile.format === 'dwg' || openedFile.format === 'dwf') && (
-                    <div className="native-format-card">
-                      <FileText size={36} />
-                      <strong>{openedFile.format.toUpperCase()} dosyasi acildi</strong>
-                      <span>{openedFile.message}</span>
-                    </div>
-                  )}
+              ) : openedFile?.entities?.length ? (
+                <CadCanvas
+                  entities={openedFile.entities.slice(0, entityLimit)}
+                  hiddenLayers={hiddenLayers}
+                  theme={appSettings.theme}
+                  viewWidth={viewSize.width}
+                  viewHeight={viewSize.height}
+                />
+              ) : (
+                <div className="native-format-card">
+                  <FileText size={36} />
+                  <strong>{openedFile ? openedFile.name : 'Cizim yok'}</strong>
+                  <span>{openedFile?.message || 'Dosya acin veya ornek plani yukleyin.'}</span>
                 </div>
               )}
 
@@ -2092,8 +2296,10 @@ function App() {
               <MarkupLayer
                 numbers={numberMarkers}
                 media={mediaMarkers}
+                texts={textNotes}
                 coordMode={coordMode}
                 dxfTransform={dxfTransform}
+                onSelectMedia={setMediaPreview}
               />
               <SketchLayer
                 shapes={sketchShapes}
@@ -2109,6 +2315,35 @@ function App() {
                 dxfTransform={dxfTransform}
                 hint={measureHint}
               />
+              {zoomWindowMode && (
+                <div
+                  className="draw-capture"
+                  onPointerDown={(event) => {
+                    zoomDrag.current = { x1: event.clientX, y1: event.clientY, x2: event.clientX, y2: event.clientY }
+                  }}
+                  onPointerUp={(event) => {
+                    const start = zoomDrag.current
+                    zoomDrag.current = null
+                    const host = contentRef.current?.closest('.viewport-host')
+                    if (!start || !(host instanceof HTMLElement)) return
+                    const bounds = host.getBoundingClientRect()
+                    viewportRef.current?.zoomToScreenRect({
+                      x1: start.x1 - bounds.left,
+                      y1: start.y1 - bounds.top,
+                      x2: event.clientX - bounds.left,
+                      y2: event.clientY - bounds.top,
+                    })
+                    setZoomWindowMode(false)
+                  }}
+                >
+                  <span className="draw-hint">Pencere</span>
+                </div>
+              )}
+              {pendingText && (
+                <div className="draw-capture" onPointerDown={placeTextNote}>
+                  <span className="draw-hint">Metin</span>
+                </div>
+              )}
               {activeMeasureMode && (
                 <div
                   className="measure-capture"
@@ -2165,8 +2400,11 @@ function App() {
           {settingsPanelOpen && (
             <SettingsPanel
               settings={appSettings}
+              pro={pro}
               onChange={updateAppSettings}
               onClose={() => setSettingsPanelOpen(false)}
+              onUpgrade={() => setUpgradeOpen(true)}
+              onPrivacy={() => setPrivacyOpen(true)}
             />
           )}
 
@@ -2245,6 +2483,67 @@ function App() {
 
         {!online && <p className="offline-banner">Offline mod: acilan dosyalar ve onbellek calisir.</p>}
       </section>
+      )}
+
+      {upgradeOpen && (
+        <UpgradeSheet
+          busy={upgradeBusy}
+          priceLabel={priceLabel}
+          error={upgradeError}
+          onClose={() => setUpgradeOpen(false)}
+          onPurchase={() => {
+            void buyPro()
+          }}
+          onRestore={() => {
+            void handleRestorePro()
+          }}
+        />
+      )}
+
+      {exportOpen && (
+        <div className="upgrade-sheet" role="dialog" aria-label="Disa aktar">
+          <div className="upgrade-card">
+            <h2>Disa aktar</h2>
+            <p className="upgrade-note">{pro ? 'Filigransiz PDF veya gorsel.' : 'Ucretsiz planda kucuk bir filigran eklenir.'}</p>
+            <div className="upgrade-actions">
+              <button type="button" onClick={() => { setExportOpen(false); void shareDrawing('pdf') }}>PDF</button>
+              <button type="button" onClick={() => { setExportOpen(false); void shareDrawing('png') }}>Gorsel</button>
+              <button type="button" className="upgrade-dismiss" onClick={() => setExportOpen(false)}>Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {privacyOpen && (
+        <div className="upgrade-sheet" role="dialog" aria-label="Gizlilik">
+          <div className="upgrade-card">
+            <h2>Gizlilik</h2>
+            <p className="upgrade-note">
+              Cizimler cihazinizda acilir. Son dosyalar yalnizca bu uygulamada saklanir. Bulut hesaplari ancak siz baglarsaniz kullanilir.
+              Satin alma kaydi Google Play tarafindan tutulur. Konum, rehber veya reklam kimligi toplanmaz.
+            </p>
+            <div className="upgrade-actions">
+              <button type="button" onClick={() => setPrivacyOpen(false)}>Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mediaPreview && (
+        <div className="upgrade-sheet" role="dialog" aria-label="Isaret">
+          <div className="upgrade-card">
+            <h2>{mediaPreview.label}</h2>
+            {mediaPreview.imageUrl && <img src={mediaPreview.imageUrl} alt="" className="media-preview" />}
+            {mediaPreview.audioUrl && <audio controls src={mediaPreview.audioUrl} />}
+            {mediaPreview.videoUrl && <video controls src={mediaPreview.videoUrl} className="media-preview" />}
+            {!mediaPreview.imageUrl && !mediaPreview.audioUrl && !mediaPreview.videoUrl && (
+              <p className="upgrade-note">Bu isaretin medya dosyasi yok.</p>
+            )}
+            <div className="upgrade-actions">
+              <button type="button" onClick={() => setMediaPreview(null)}>Kapat</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {screen === 'viewer' && openPanelOpen && (

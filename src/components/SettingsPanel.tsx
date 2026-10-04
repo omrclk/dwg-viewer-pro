@@ -2,12 +2,18 @@ import type { AppSettings } from '../settings'
 
 export function SettingsPanel({
   settings,
+  pro,
   onChange,
   onClose,
+  onUpgrade,
+  onPrivacy,
 }: {
   settings: AppSettings
+  pro: boolean
   onChange: (next: AppSettings) => void
   onClose: () => void
+  onUpgrade: () => void
+  onPrivacy: () => void
 }) {
   return (
     <div className="settings-panel" role="dialog" aria-label="Olcum ayarlari">
@@ -30,6 +36,26 @@ export function SettingsPanel({
         <em>{settings.measureDecimals}</em>
       </label>
       <label className="settings-row">
+        <span>Tema</span>
+        <button
+          type="button"
+          onClick={() => onChange({ ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+        >
+          {settings.theme === 'dark' ? 'Koyu' : 'Acik'}
+        </button>
+      </label>
+      <label className="settings-row">
+        <span>Metin yuksekligi</span>
+        <input
+          type="number"
+          min={0.5}
+          max={200}
+          step={0.5}
+          value={settings.textHeight}
+          onChange={(event) => onChange({ ...settings, textHeight: Number(event.target.value) || settings.textHeight })}
+        />
+      </label>
+      <label className="settings-row">
         <span>Yakalama (Snap)</span>
         <input
           type="checkbox"
@@ -37,6 +63,14 @@ export function SettingsPanel({
           onChange={(event) => onChange({ ...settings, snap: { ...settings.snap, enabled: event.target.checked } })}
         />
       </label>
+      <div className="settings-links">
+        <button type="button" onClick={onUpgrade}>
+          {pro ? 'Pro acik' : 'Pro kilidi'}
+        </button>
+        <button type="button" onClick={onPrivacy}>
+          Gizlilik
+        </button>
+      </div>
     </div>
   )
 }

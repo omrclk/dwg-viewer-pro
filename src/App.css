@@ -1793,3 +1793,107 @@ button {
     inset: 72px 0 calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px);
   }
 }
+
+.cad-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0b0d0d;
+}
+
+.theme-light .cad-canvas,
+.theme-light .cad-stage {
+  background: #f6f3ec;
+}
+
+.upgrade-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 16px;
+}
+
+.upgrade-card {
+  width: min(440px, 100%);
+  background: #141716;
+  color: #f4f7f6;
+  border: 1px solid rgba(24, 244, 234, 0.35);
+  border-radius: 18px;
+  padding: 20px 18px 16px;
+}
+
+.theme-light .upgrade-card {
+  background: #fffdf8;
+  color: #1c2422;
+}
+
+.upgrade-kicker {
+  margin: 0 0 4px;
+  color: #18f4ea;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.upgrade-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.upgrade-card ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.upgrade-price {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.upgrade-note,
+.upgrade-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.upgrade-error {
+  color: #ff8d8d;
+}
+
+.upgrade-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.upgrade-actions button {
+  border: 0;
+  border-radius: 12px;
+  background: #18f4ea;
+  color: #06211f;
+  font-weight: 700;
+  padding: 12px 14px;
+}
+
+.upgrade-actions .upgrade-dismiss {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.media-preview {
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: 10px;
+  margin-top: 8px;
+}

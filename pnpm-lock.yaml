@@ -32,9 +32,15 @@ importers:
       '@capacitor/toast':
         specifier: ^7.0.4
         version: 7.0.4(@capacitor/core@7.6.0)
+      '@capgo/native-purchases':
+        specifier: ^7.19.3
+        version: 7.19.3(@capacitor/core@7.6.0)
       '@hookform/resolvers':
         specifier: ^3.10.0
         version: 3.10.0(react-hook-form@7.55.0(react@18.3.1))
+      '@node-projects/acad-ts':
+        specifier: 3.2.0
+        version: 3.2.0
       '@radix-ui/react-accordion':
         specifier: ^1.2.2
         version: 1.2.4(@types/react-dom@18.3.6(@types/react@18.3.20))(@types/react@18.3.20)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -406,6 +412,11 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
 
+  '@capgo/native-purchases@7.19.3':
+    resolution: {integrity: sha512-ceTc7LlSft1eps3I6dgf/4DI7p7PxgSHe0ZVMunTqyN6rR979VzZoW9ECddX0O2kBQcKfr/VB+a9ivEbUc22HQ==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
+
   '@esbuild/aix-ppc64@0.25.2':
     resolution: {integrity: sha512-wCIboOL2yXZym2cgm6mlA742s9QeJ8DjGVaL39dLN4rRwrOgOyYSnOaFPhKZGLb2ngj4EyfAFjsNJwPXZvseag==}
     engines: {node: '>=18'}
@@ -704,6 +715,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.30':
     resolution: {integrity: sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q==}
+
+  '@node-projects/acad-ts@3.2.0':
+    resolution: {integrity: sha512-tv3lEp2MoMcLP1rHflz6iSwtOca8wxLramqsCQ0G5dMku4r4YaL+pVyrQnafEQZM0fFzQz2XLH1/2htSunvUcg==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1782,6 +1796,7 @@ packages:
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -2122,6 +2137,7 @@ packages:
   eslint@9.24.0:
     resolution: {integrity: sha512-eh/jxIEJyZrvbWRe4XuVclLPDYSYYYgLy5zXGGxD6j8zjSAxFEzI2fL/8xNq6O2yKqVt+eF2YhV+hxjV6UKXwQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -3427,6 +3443,10 @@ snapshots:
     dependencies:
       '@capacitor/core': 7.6.0
 
+  '@capgo/native-purchases@7.19.3(@capacitor/core@7.6.0)':
+    dependencies:
+      '@capacitor/core': 7.6.0
+
   '@esbuild/aix-ppc64@0.25.2':
     optional: true
 
@@ -3701,6 +3721,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
+
+  '@node-projects/acad-ts@3.2.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:

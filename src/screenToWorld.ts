@@ -21,12 +21,12 @@ export function screenToWorldPoint(
 
   const width = contentEl.clientWidth || 1
   const height = contentEl.clientHeight || 1
-  const viewX = (localX / width) * VIEW_BOX.width
-  const viewY = (localY / height) * VIEW_BOX.height
 
   if (coordMode === 'dxf' && dxfTransform) {
-    return viewBoxToWorld(viewX, viewY, dxfTransform)
+    return viewBoxToWorld(localX, localY, dxfTransform)
   }
 
+  const viewX = (localX / width) * VIEW_BOX.width
+  const viewY = (localY / height) * VIEW_BOX.height
   return { x: viewX, y: viewY }
 }

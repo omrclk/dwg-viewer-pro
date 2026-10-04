@@ -1,4 +1,3 @@
-import { parseDxfEntities } from './dxfParser'
 import type { FileSource, OpenedFile } from './fileTypes'
 import { getFormat } from './fileTypes'
 import { addRecentFile } from './recentFiles'
@@ -31,9 +30,20 @@ export async function buildOpenedFile(
     }
   }
 
-  if (format === 'dxf') {
-    const text = await file.text()
-    const entities = parseDxfEntities(text)
+  if (format === 'dwf') {
+    return {
+      ok: false,
+      error: 'DWF bu surumde acilmiyor. Cizimi DWG veya DXF olarak kaydedip yeniden acin.',
+    }
+  }
+
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const { readDrawingBytes } = await import('./cad/readDrawing')
+    const document = await readDrawingBytes(bytes, format)
+    const layout = document.layouts.find((item) => item.isModel) ?? document.layouts[0]
+    const entities = layout?.entities ?? []
+    const warning = document.warnings[0]
     return {
       ok: true,
       file: {
@@ -41,26 +51,19 @@ export async function buildOpenedFile(
         size: file.size,
         format,
         source,
+        document,
+        layoutName: layout?.name ?? 'Model',
         entities,
-        message: entities.length
-          ? `${entities.length} DXF nesnesi yuklendi.`
-          : 'DXF acildi fakat desteklenen cizim nesnesi bulunamadi.',
+        message: [
+          `${document.version} · ${entities.length} nesne`,
+          layout ? layout.name : '',
+          warning ?? '',
+        ].filter(Boolean).join(' · '),
       },
     }
-  }
-
-  return {
-    ok: true,
-    file: {
-      name: file.name,
-      size: file.size,
-      format,
-      source,
-      message:
-        format === 'dwg'
-          ? 'DWG dosyasi acildi. Tam DWG render icin native/wasm CAD motoru baglanmalidir.'
-          : 'DWF dosyasi secildi. Tam DWF render icin native/wasm CAD motoru baglanmalidir.',
-    },
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Dosya okunamadi.'
+    return { ok: false, error: message }
   }
 }
 

@@ -44,7 +44,7 @@ export function arcLengthFromThreePoints(center: Point2, start: Point2, end: Poi
   const radius = distance(center, start)
   if (!radius) return 0
   const startAngle = Math.atan2(start.y - center.y, start.x - center.x)
-  let endAngle = Math.atan2(end.y - center.y, end.x - center.x)
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x)
   let sweep = endAngle - startAngle
   if (sweep <= 0) sweep += Math.PI * 2
   return radius * sweep

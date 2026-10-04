@@ -4,7 +4,7 @@ const RECENT_STORAGE_KEY = 'dwg-viewer-recent-files'
 const DB_NAME = 'dwg-viewer-file-cache'
 const DB_STORE = 'files'
 const MAX_RECENT = 20
-const MAX_CACHE_BYTES = 15 * 1024 * 1024
+const MAX_CACHE_BYTES = 48 * 1024 * 1024
 
 type CachedFile = {
   id: string
@@ -104,6 +104,10 @@ export async function addRecentFile(file: File, format: SupportedFormat, source:
   )
   writeRecentList([entry, ...withoutDuplicate])
   return entry
+}
+
+export function toggleRecentFavorite(id: string) {
+  writeRecentList(readRecentList().map((entry) => (entry.id === id ? { ...entry, favorite: !entry.favorite } : entry)))
 }
 
 export function removeRecentFile(id: string) {

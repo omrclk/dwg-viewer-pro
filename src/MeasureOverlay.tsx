@@ -64,7 +64,7 @@ export function MeasureOverlay({
   return (
     <div className="measure-overlay" aria-live="polite">
       <div className="measure-hint">{hint}</div>
-      <svg className="measure-svg" viewBox={`0 0 ${VIEW_BOX.width} ${VIEW_BOX.height}`} aria-hidden>
+      <svg className="measure-svg" viewBox={`0 0 ${dxfTransform?.viewWidth ?? VIEW_BOX.width} ${dxfTransform?.viewHeight ?? VIEW_BOX.height}`} aria-hidden>
         {viewPoints.length > 1 && mode !== 'point' && (
           <polyline className="measure-draft-line" points={pointsToPolyline(viewPoints)} />
         )}
