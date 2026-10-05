@@ -1,7 +1,7 @@
 # Play Store taslagi
 
 Paket: `com.dwgviewer.pro`  
-Sürüm: 1.0.0 (versionCode 2)  
+Sürüm: 1.1.0 (versionCode 3)  
 Tür: Araçlar  
 Fiyat: Ücretsiz indirme, uygulama içi tek seferlik `com.dwgviewer.pro.unlock`
 
