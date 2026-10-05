@@ -41,8 +41,15 @@ export async function buildOpenedFile(
     const bytes = new Uint8Array(await file.arrayBuffer())
     const { readDrawingBytes } = await import('./cad/readDrawing')
     const document = await readDrawingBytes(bytes, format)
-    const layout = document.layouts.find((item) => item.isModel) ?? document.layouts[0]
+    const model = document.layouts.find((item) => item.isModel && item.entities.length)
+    const layout = model ?? [...document.layouts].sort((a, b) => b.entities.length - a.entities.length)[0]
     const entities = layout?.entities ?? []
+    if (!entities.length) {
+      return {
+        ok: false,
+        error: `${format.toUpperCase()} okundu (${document.version}) ama cizilecek nesne yok. Bu surum veya nesne tipleri desteklenmiyor olabilir.`,
+      }
+    }
     const warning = document.warnings[0]
     return {
       ok: true,

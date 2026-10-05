@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
     backgroundColor: '#000000',
     captureInput: true,
-    adjustMarginsForEdgeToEdge: 'force',
+    adjustMarginsForEdgeToEdge: 'disable',
   },
   server: {
     androidScheme: 'https',

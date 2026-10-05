@@ -73,5 +73,5 @@ export function resolvePerformanceMode(mode: PerformanceMode) {
 }
 
 export function entityRenderLimit(lowPerf: boolean) {
-  return lowPerf ? 180 : 500
+  return lowPerf ? 12000 : 60000
 }

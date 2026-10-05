@@ -16,9 +16,9 @@ export async function initNativeSafeArea() {
   document.documentElement.classList.add('capacitor-native')
 
   const { StatusBar, Style } = await import('@capacitor/status-bar')
-  await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => undefined)
-  await StatusBar.setStyle({ style: Style.Dark }).catch(() => undefined)
-  await StatusBar.setBackgroundColor({ color: '#000000' }).catch(() => undefined)
+  await StatusBar.setOverlaysWebView({ overlay: true }).catch(() => undefined)
+  await StatusBar.setStyle({ style: Style.Light }).catch(() => undefined)
+  await StatusBar.setBackgroundColor({ color: '#00000000' }).catch(() => undefined)
 
   const applyFromEnv = () => {
     const probe = document.createElement('div')

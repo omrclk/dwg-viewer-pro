@@ -3,6 +3,7 @@ package com.dwgviewer.pro;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -21,7 +22,10 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Locale;
 import org.json.JSONObject;
@@ -32,6 +36,10 @@ public class MainActivity extends BridgeActivity {
     private static final String OPEN_ERROR_EVENT = "dwg-viewer-open-error";
     private boolean nativeBridgeInstalled = false;
     private byte[] pendingFileBytes;
+    private int cssTop;
+    private int cssBottom;
+    private int cssLeft;
+    private int cssRight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,33 +54,58 @@ public class MainActivity extends BridgeActivity {
         applySafeAreaInsets();
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        applySafeAreaInsets();
+    }
+
     private void applySafeAreaInsets() {
         if (bridge == null || bridge.getWebView() == null) return;
 
         WebView webView = bridge.getWebView();
         ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
             Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            pushSafeAreaInsets(bars.top, bars.bottom, bars.left, bars.right);
+            publishCssInsets(bars.top, bars.bottom, bars.left, bars.right);
             return windowInsets;
         });
         ViewCompat.requestApplyInsets(webView);
-        webView.postDelayed(() -> {
-            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(webView);
-            if (insets == null) return;
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            pushSafeAreaInsets(bars.top, bars.bottom, bars.left, bars.right);
-        }, 250);
+        webView.post(() -> readAndPublishInsets(webView));
+        for (long delay : new long[] { 200, 700, 1600, 3200 }) {
+            webView.postDelayed(() -> readAndPublishInsets(webView), delay);
+        }
     }
 
-    private void pushSafeAreaInsets(int top, int bottom, int left, int right) {
+    private void readAndPublishInsets(WebView webView) {
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(webView);
+        if (insets == null) return;
+        Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+        publishCssInsets(bars.top, bars.bottom, bars.left, bars.right);
+    }
+
+    private void publishCssInsets(int topPx, int bottomPx, int leftPx, int rightPx) {
+        float density = getResources().getDisplayMetrics().density;
+        if (density <= 0f) density = 1f;
+        cssTop = Math.round(topPx / density);
+        cssBottom = Math.round(bottomPx / density);
+        cssLeft = Math.round(leftPx / density);
+        cssRight = Math.round(rightPx / density);
+        injectCssInsets();
+    }
+
+    private void injectCssInsets() {
         if (bridge == null || bridge.getWebView() == null) return;
         String script = String.format(
             Locale.US,
-            "window.__setSafeAreaInsets&&window.__setSafeAreaInsets(%d,%d,%d,%d);",
-            top,
-            bottom,
-            left,
-            right
+            "(function(){var r=document.documentElement;r.style.setProperty('--safe-top','%dpx');r.style.setProperty('--safe-bottom','%dpx');r.style.setProperty('--safe-left','%dpx');r.style.setProperty('--safe-right','%dpx');if(window.__setSafeAreaInsets)window.__setSafeAreaInsets(%d,%d,%d,%d);})();",
+            cssTop,
+            cssBottom,
+            cssLeft,
+            cssRight,
+            cssTop,
+            cssBottom,
+            cssLeft,
+            cssRight
         );
         bridge.getWebView().evaluateJavascript(script, null);
     }
@@ -89,6 +122,24 @@ public class MainActivity extends BridgeActivity {
 
         String action = intent.getAction();
         Log.d(TAG, "Incoming intent action: " + action);
+
+        String localPath = intent.getStringExtra("dwg_path");
+        if (localPath != null && isDebuggable()) {
+            final String path = localPath;
+            new Thread(() -> {
+                try {
+                    File file = new File(path);
+                    try (FileInputStream input = new FileInputStream(file)) {
+                        byte[] bytes = readStream(input);
+                        JSONObject payload = payloadFromBytes(bytes, file.getName(), "application/octet-stream", file.getAbsolutePath());
+                        dispatchWindowEvent(OPEN_FILE_EVENT, payload, 600);
+                    }
+                } catch (Exception exception) {
+                    dispatchOpenError(exception);
+                }
+            }).start();
+            return;
+        }
 
         Uri uri = null;
         if (Intent.ACTION_VIEW.equals(action)) {
@@ -126,11 +177,7 @@ public class MainActivity extends BridgeActivity {
                 dispatchWindowEvent(OPEN_FILE_EVENT, payload, 600);
             } catch (Exception exception) {
                 Log.e(TAG, "Error building file payload", exception);
-                JSONObject payload = new JSONObject();
-                try {
-                    payload.put("message", "WhatsApp dosyasi acilamadi: " + exception.getMessage());
-                } catch (Exception ignored) {}
-                dispatchWindowEvent(OPEN_ERROR_EVENT, payload, 600);
+                dispatchOpenError(exception);
             }
         }).start();
     }
@@ -161,18 +208,24 @@ public class MainActivity extends BridgeActivity {
         if (mimeType == null || mimeType.trim().isEmpty()) mimeType = "application/octet-stream";
 
         String displayName = resolveDisplayName(uri);
-        displayName = ensureSupportedFileName(displayName, mimeType);
-
-        Log.d(TAG, "Resolved name: " + displayName + ", Mime: " + mimeType);
-
         byte[] bytes = readUriBytes(uri);
+        return payloadFromBytes(bytes, displayName, mimeType, "Paylasim > " + displayName);
+    }
+
+    private JSONObject payloadFromBytes(byte[] bytes, String displayName, String mimeType, String sourcePath) throws Exception {
+        String sniffed = sniffExtension(bytes);
+        displayName = ensureSupportedFileName(displayName, mimeType, sniffed);
+        if (!isDrawingName(displayName)) {
+            throw new IllegalArgumentException("Paylasilan dosya DWG, DXF veya PDF degil.");
+        }
+        Log.d(TAG, "Resolved name: " + displayName + ", Mime: " + mimeType + ", sniff: " + sniffed);
         JSONObject payload = new JSONObject();
-        payload.put("id", uri.toString() + ":" + displayName + ":" + bytes.length);
+        payload.put("id", sourcePath + ":" + displayName + ":" + bytes.length);
         payload.put("name", displayName);
-        payload.put("mimeType", mimeType);
+        payload.put("mimeType", mimeType == null ? "application/octet-stream" : mimeType);
         payload.put("size", bytes.length);
-        payload.put("sourcePath", "Paylasim > " + displayName);
-        if (bytes.length > 350_000) {
+        payload.put("sourcePath", sourcePath);
+        if (bytes.length > 48 * 1024) {
             pendingFileBytes = bytes;
             payload.put("chunked", true);
         } else {
@@ -184,17 +237,54 @@ public class MainActivity extends BridgeActivity {
     }
 
     private byte[] readUriBytes(Uri uri) throws Exception {
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            if (input == null) throw new IllegalStateException("Dosya okunamadi (Input stream null).");
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {}
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new IllegalStateException("Dosya okunamadi.");
+            return readStream(input);
+        }
+    }
 
+    private byte[] readStream(InputStream input) throws Exception {
+        try (InputStream source = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[64 * 1024];
             int read;
-            while ((read = input.read(buffer)) != -1) {
+            while ((read = source.read(buffer)) != -1) {
                 output.write(buffer, 0, read);
             }
             return output.toByteArray();
         }
+    }
+
+    private boolean isDebuggable() {
+        return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
+    private void dispatchOpenError(Exception exception) {
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("message", "Dosya acilamadi: " + exception.getMessage());
+        } catch (Exception ignored) {}
+        dispatchWindowEvent(OPEN_ERROR_EVENT, payload, 400);
+    }
+
+    private String sniffExtension(byte[] bytes) {
+        int length = Math.min(bytes.length, 256);
+        if (length == 0) return "";
+        String head = new String(bytes, 0, length, StandardCharsets.ISO_8859_1);
+        String trimmed = head.trim();
+        if (trimmed.startsWith("AC10")) return ".dwg";
+        if (trimmed.startsWith("%PDF")) return ".pdf";
+        if (trimmed.startsWith("AutoCAD Binary DXF")) return ".dxf";
+        String compact = trimmed.replace("\u0000", "");
+        if (compact.contains("SECTION") || compact.startsWith("0")) return ".dxf";
+        return "";
+    }
+
+    private boolean isDrawingName(String displayName) {
+        String lowerName = displayName.toLowerCase(Locale.ROOT);
+        return lowerName.endsWith(".dwg") || lowerName.endsWith(".dxf") || lowerName.endsWith(".dwf") || lowerName.endsWith(".pdf");
     }
 
     private String resolveDisplayName(Uri uri) {
@@ -225,22 +315,22 @@ public class MainActivity extends BridgeActivity {
         return displayName;
     }
 
-    private String ensureSupportedFileName(String displayName, String mimeType) {
+    private String ensureSupportedFileName(String displayName, String mimeType, String sniffed) {
         String lowerName = displayName.toLowerCase(Locale.ROOT);
-        if (
-            lowerName.endsWith(".dwg") ||
-            lowerName.endsWith(".dxf") ||
-            lowerName.endsWith(".dwf") ||
-            lowerName.endsWith(".pdf")
-        ) {
-            return displayName;
+        boolean named = isDrawingName(displayName);
+        if (sniffed != null && !sniffed.isEmpty() && !lowerName.endsWith(sniffed)) {
+            int dot = named ? displayName.lastIndexOf('.') : -1;
+            String stem = dot > 0 ? displayName.substring(0, dot) : displayName;
+            return stem + sniffed;
         }
+        if (named) return displayName;
 
-        String lowerMime = mimeType.toLowerCase(Locale.ROOT);
+        String lowerMime = mimeType == null ? "" : mimeType.toLowerCase(Locale.ROOT);
         if (lowerMime.contains("pdf")) return displayName + ".pdf";
         if (lowerMime.contains("dxf")) return displayName + ".dxf";
         if (lowerMime.contains("dwf")) return displayName + ".dwf";
-        return displayName + ".dwg";
+        if (lowerMime.contains("dwg") || lowerMime.contains("acad")) return displayName + ".dwg";
+        return displayName;
     }
 
     private void dispatchWindowEvent(String eventName, JSONObject payload, long delayMs) {

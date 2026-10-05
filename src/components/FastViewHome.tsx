@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import type { RecentFileEntry } from '../fileTypes'
 import { formatBytes, sourceLabel } from '../fileTypes'
 import { FvDimLinear } from '../fastview/toolIcons'
+import { APP_VERSION } from '../version'
 
 type HomeTab = 'recent' | 'favorite' | 'drawings'
 type HomeNav = 'home' | 'files' | 'cloud'
@@ -56,7 +57,7 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onToggleFa
           <div className="fv-home-avatar" />
           <div className="fv-home-brand">
             <span className="fv-home-logo">D</span>
-            <span>DWG Viewer Pro</span>
+            <span>DWG Viewer Pro <small className="fv-home-version">{APP_VERSION}</small></span>
           </div>
           <span />
         </div>

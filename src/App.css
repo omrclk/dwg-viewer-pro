@@ -1495,7 +1495,7 @@ button {
 }
 
 .mobile-viewer .cad-stage {
-  inset: 72px 0 calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px);
+  inset: calc(72px + var(--safe-top, 0px)) var(--safe-right, 0px) calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px + var(--safe-bottom, 0px)) var(--safe-left, 0px);
   contain: paint;
 }
 
@@ -1791,7 +1791,7 @@ button {
   }
 
   .mobile-viewer .cad-stage {
-    inset: 72px 0 calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px);
+    inset: calc(72px + var(--safe-top, 0px)) var(--safe-right, 0px) calc(var(--bottom-safe) + var(--fastview-nav-height) + var(--fastview-sub-height) + 10px + var(--safe-bottom, 0px)) var(--safe-left, 0px);
   }
 }
 

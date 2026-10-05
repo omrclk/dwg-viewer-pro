@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Capacitor } from '@capacitor/core'
 import {
   ArrowUpToLine,
   Box,
@@ -89,6 +90,7 @@ import { FREE_MEASURE_LIMIT } from './billing/products'
 import { loadEntitlement, loadProProduct, purchasePro, refreshEntitlement, restorePro as restoreProPurchase } from './billing/entitlement'
 import { exportDrawingPdf, exportDrawingPng } from './exportShare'
 import { SUB_MENUS } from './fastview/menuConfig'
+import { APP_VERSION } from './version'
 
 declare global {
   interface Window {
@@ -103,16 +105,6 @@ declare global {
 const VIP_ACTIONS = new Set(
   Object.values(SUB_MENUS).flatMap((items) => items.filter((item) => item.vip).map((item) => item.id)),
 )
-
-const DEMO_LAYERS = ['A-PLAN', 'S-STRUCT', 'A-ELEV', 'A-GRID', 'TEXT'] as const
-
-const DEMO_LAYER_COUNTS = new Map<string, number>([
-  ['A-PLAN', 3],
-  ['S-STRUCT', 2],
-  ['A-ELEV', 2],
-  ['A-GRID', 2],
-  ['TEXT', 8],
-])
 
 type ToolbarAction = 'open' | 'save' | 'undo' | 'redo' | 'print' | 'zoomIn' | 'fit'
 type MenuAction = 'viewMode' | 'fileInfo' | 'export' | 'help' | 'toggleAnnotations' | 'measureResults' | 'regen' | 'open' | 'settings'
@@ -772,11 +764,11 @@ function App() {
 
   const dxfEntities = openedFile && openedFile.format !== 'pdf' ? openedFile.entities : undefined
   const layerList = useMemo(() => {
-    const base = dxfEntities?.length ? layersFromEntities(dxfEntities) : [...DEMO_LAYERS]
+    const base = dxfEntities?.length ? layersFromEntities(dxfEntities) : []
     return [...new Set([...base, ...customLayers])].sort((a, b) => a.localeCompare(b, 'tr'))
   }, [customLayers, dxfEntities])
   const entityCounts = useMemo(
-    () => (dxfEntities?.length ? countEntitiesByLayer(dxfEntities) : DEMO_LAYER_COUNTS),
+    () => (dxfEntities?.length ? countEntitiesByLayer(dxfEntities) : new Map<string, number>()),
     [dxfEntities],
   )
 
@@ -795,6 +787,14 @@ function App() {
     document.documentElement.classList.toggle('theme-dark', appSettings.theme === 'dark')
     document.documentElement.classList.toggle('theme-light', appSettings.theme === 'light')
   }, [appSettings.theme])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    const darkChrome = screen === 'viewer'
+    void import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+      void StatusBar.setStyle({ style: darkChrome ? Style.Dark : Style.Light })
+    })
+  }, [screen])
 
   useEffect(() => {
     const element = contentRef.current
@@ -1483,7 +1483,9 @@ function App() {
 
   const applyOpenResult = (result: Awaited<ReturnType<typeof buildOpenedFile>>) => {
     if (result.ok === false) {
+      setOpenedFile(null)
       setError(result.error)
+      setScreen('viewer')
       return
     }
 
@@ -1535,14 +1537,18 @@ function App() {
         if (detail.id) lastExternalFileIdRef.current = detail.id
         notify('Paylasilan dosya acildi.')
       } catch (openError) {
-        const message = openError instanceof Error ? openError.message : 'WhatsApp dosyasi acilamadi.'
+        const message = openError instanceof Error ? openError.message : 'Dosya acilamadi.'
+        setOpenedFile(null)
+        setScreen('viewer')
         setError(message)
       }
     }
 
     const handleExternalError = (event: Event) => {
       const detail = (event as CustomEvent<ExternalFilePayload>).detail
-      setError(detail?.message || 'WhatsApp dosyasi acilamadi.')
+        setOpenedFile(null)
+        setScreen('viewer')
+        setError(detail?.message || 'Dosya acilamadi.')
     }
 
     window.addEventListener('dwg-viewer-open-file', handleExternalFile)
@@ -1914,6 +1920,7 @@ function App() {
       `Boyut: ${formatBytes(openedFile.size)}`,
       openedFile.entities ? `Nesne: ${openedFile.entities.length}` : undefined,
       openedFile.message,
+      `Surum: ${APP_VERSION}`,
       `Olcum: ${measureRecords.length}`,
     ].filter(Boolean).join('\n')
   }
@@ -2282,8 +2289,8 @@ function App() {
               ) : (
                 <div className="native-format-card">
                   <FileText size={36} />
-                  <strong>{openedFile ? openedFile.name : 'Cizim yok'}</strong>
-                  <span>{openedFile?.message || 'Dosya acin veya ornek plani yukleyin.'}</span>
+                  <strong>{error ? 'Dosya acilamadi' : 'Cizim yok'}</strong>
+                  <span>{error || 'Dosya acin veya Ornekler sekmesinden bir plan yukleyin.'}</span>
                 </div>
               )}
 
