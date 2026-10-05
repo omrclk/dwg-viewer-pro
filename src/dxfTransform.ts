@@ -13,44 +13,115 @@ export type DxfTransform = {
   viewHeight: number
 }
 
-export function boundsForEntities(entities: DrawingEntity[]): Bounds {
-  const xs: number[] = []
-  const ys: number[] = []
+export function isUsableBounds(bounds: Bounds | null | undefined): bounds is Bounds {
+  if (!bounds) return false
+  const { minX, minY, maxX, maxY } = bounds
+  if (![minX, minY, maxX, maxY].every((value) => Number.isFinite(value))) return false
+  if ([minX, minY, maxX, maxY].some((value) => Math.abs(value) > 1e19)) return false
+  return maxX - minX > 1e-9 && maxY - minY > 1e-9
+}
 
+function geometryPoints(entities: DrawingEntity[]) {
+  const points: Array<{ x: number; y: number }> = []
   entities.forEach((entity) => {
     if (entity.type === 'line') {
-      xs.push(entity.x1, entity.x2)
-      ys.push(entity.y1, entity.y2)
-    }
-
-    if (entity.type === 'circle' || entity.type === 'arc') {
-      xs.push(entity.cx - entity.r, entity.cx + entity.r)
-      ys.push(entity.cy - entity.r, entity.cy + entity.r)
-    }
-
-    if (entity.type === 'polyline' || entity.type === 'solid') {
-      entity.points.forEach((point) => {
-        xs.push(point.x)
-        ys.push(point.y)
-      })
-    }
-
-    if (entity.type === 'text') {
-      xs.push(entity.x, entity.x + Math.max(entity.height, entity.text.length * entity.height * 0.6))
-      ys.push(entity.y, entity.y + entity.height)
+      points.push({ x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 })
+    } else if (entity.type === 'circle' || entity.type === 'arc') {
+      points.push(
+        { x: entity.cx - entity.r, y: entity.cy - entity.r },
+        { x: entity.cx + entity.r, y: entity.cy + entity.r },
+      )
+    } else if (entity.type === 'polyline' || entity.type === 'solid') {
+      points.push(...entity.points)
+    } else if (entity.type === 'text') {
+      points.push({ x: entity.x, y: entity.y })
     }
   })
+  return points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Math.abs(point.x) < 1e12 && Math.abs(point.y) < 1e12)
+}
 
-  if (!xs.length || !ys.length) {
-    return { minX: 0, minY: 0, maxX: 390, maxY: 760 }
-  }
+function iqrFence(sorted: number[]) {
+  const q1 = percentile(sorted, 0.25)
+  const q3 = percentile(sorted, 0.75)
+  const span = Math.max(q3 - q1, 1e-9)
+  return { low: q1 - span * 8, high: q3 + span * 8 }
+}
 
+function percentile(sorted: number[], ratio: number) {
+  if (!sorted.length) return 0
+  const index = (sorted.length - 1) * ratio
+  const low = Math.floor(index)
+  const high = Math.ceil(index)
+  if (low === high) return sorted[low]
+  return sorted[low] * (high - index) + sorted[high] * (index - low)
+}
+
+function expandBounds(bounds: Bounds, fraction: number): Bounds {
+  const padX = (bounds.maxX - bounds.minX) * fraction
+  const padY = (bounds.maxY - bounds.minY) * fraction
   return {
-    minX: Math.min(...xs),
-    minY: Math.min(...ys),
-    maxX: Math.max(...xs),
-    maxY: Math.max(...ys),
+    minX: bounds.minX - padX,
+    minY: bounds.minY - padY,
+    maxX: bounds.maxX + padX,
+    maxY: bounds.maxY + padY,
   }
+}
+
+function containsBounds(outer: Bounds, inner: Bounds) {
+  return outer.minX <= inner.minX && outer.maxX >= inner.maxX && outer.minY <= inner.minY && outer.maxY >= inner.maxY
+}
+
+export function boundsForEntities(entities: DrawingEntity[], hint?: Bounds | null): Bounds {
+  const points = geometryPoints(entities)
+  if (!points.length) {
+    return isUsableBounds(hint) ? hint : { minX: 0, minY: 0, maxX: 390, maxY: 760 }
+  }
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  points.forEach((point) => {
+    minX = Math.min(minX, point.x)
+    minY = Math.min(minY, point.y)
+    maxX = Math.max(maxX, point.x)
+    maxY = Math.max(maxY, point.y)
+  })
+  const full = { minX, minY, maxX, maxY }
+  const xs = points.map((point) => point.x).sort((left, right) => left - right)
+  const ys = points.map((point) => point.y).sort((left, right) => left - right)
+  const xFence = iqrFence(xs)
+  const yFence = iqrFence(ys)
+  const kept = points.filter((point) => point.x >= xFence.low && point.x <= xFence.high && point.y >= yFence.low && point.y <= yFence.high)
+  const fullWidth = Math.max(1e-9, full.maxX - full.minX)
+  const fullHeight = Math.max(1e-9, full.maxY - full.minY)
+  let box = full
+  if (kept.length >= Math.max(3, points.length * 0.8) && kept.length < points.length) {
+    const tight = kept.reduce(
+      (acc, point) => ({
+        minX: Math.min(acc.minX, point.x),
+        minY: Math.min(acc.minY, point.y),
+        maxX: Math.max(acc.maxX, point.x),
+        maxY: Math.max(acc.maxY, point.y),
+      }),
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+    )
+    const tightWidth = Math.max(1e-9, tight.maxX - tight.minX)
+    const tightHeight = Math.max(1e-9, tight.maxY - tight.minY)
+    if (fullWidth > tightWidth * 8 || fullHeight > tightHeight * 8) box = expandBounds(tight, 0.03)
+  }
+
+  if (isUsableBounds(hint) && containsBounds(expandBounds(hint, 0.08), box)) {
+    const hintWidth = hint.maxX - hint.minX
+    const hintHeight = hint.maxY - hint.minY
+    const boxWidth = Math.max(1e-9, box.maxX - box.minX)
+    const boxHeight = Math.max(1e-9, box.maxY - box.minY)
+    if (hintWidth < boxWidth * 8 && hintHeight < boxHeight * 8) box = hint
+  }
+
+  if (box.maxX - box.minX < 1e-6) box = { ...box, minX: box.minX - 1, maxX: box.maxX + 1 }
+  if (box.maxY - box.minY < 1e-6) box = { ...box, minY: box.minY - 1, maxY: box.maxY + 1 }
+  return box
 }
 
 export function buildDxfTransform(bounds: Bounds, viewWidth = VIEW_BOX.width, viewHeight = VIEW_BOX.height): DxfTransform {

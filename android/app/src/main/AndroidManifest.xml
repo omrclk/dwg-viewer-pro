@@ -22,83 +22,236 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              WhatsApp and BiP (com.turkcell.bip) VIEW a content URI that usually has
+              no .dwg in the path and MIME application/octet-stream. A pathPattern
+              cannot match that. This filter is scheme + MIME only, including octet-stream.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" android:mimeType="application/pdf" />
-                <data android:scheme="file" android:mimeType="application/pdf" />
-                <data android:scheme="content" android:mimeType="application/acad" />
-                <data android:scheme="file" android:mimeType="application/acad" />
-                <data android:scheme="content" android:mimeType="application/autocad_dwg" />
-                <data android:scheme="file" android:mimeType="application/autocad_dwg" />
-                <data android:scheme="content" android:mimeType="application/dwg" />
-                <data android:scheme="file" android:mimeType="application/dwg" />
-                <data android:scheme="content" android:mimeType="application/dxf" />
-                <data android:scheme="file" android:mimeType="application/dxf" />
-                <data android:scheme="content" android:mimeType="application/dwf" />
-                <data android:scheme="file" android:mimeType="application/dwf" />
-                <data android:scheme="content" android:mimeType="application/octet-stream" />
-                <data android:scheme="file" android:mimeType="application/octet-stream" />
-                <data android:scheme="content" android:mimeType="application/x-acad" />
-                <data android:scheme="file" android:mimeType="application/x-acad" />
-                <data android:scheme="content" android:mimeType="application/x-autocad" />
-                <data android:scheme="file" android:mimeType="application/x-autocad" />
-                <data android:scheme="content" android:mimeType="application/x-dwg" />
-                <data android:scheme="file" android:mimeType="application/x-dwg" />
-                <data android:scheme="content" android:mimeType="application/x-dxf" />
-                <data android:scheme="file" android:mimeType="application/x-dxf" />
-                <data android:scheme="content" android:mimeType="application/x-dwf" />
-                <data android:scheme="file" android:mimeType="application/x-dwf" />
-                <data android:scheme="content" android:mimeType="image/vnd.dwg" />
-                <data android:scheme="file" android:mimeType="image/vnd.dwg" />
-                <data android:scheme="content" android:mimeType="image/vnd.dxf" />
-                <data android:scheme="file" android:mimeType="image/vnd.dxf" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/acad" />
+                <data android:mimeType="application/x-acad" />
+                <data android:mimeType="application/autocad_dwg" />
+                <data android:mimeType="application/x-autocad" />
+                <data android:mimeType="application/dwg" />
+                <data android:mimeType="application/x-dwg" />
+                <data android:mimeType="application/dxf" />
+                <data android:mimeType="application/x-dxf" />
+                <data android:mimeType="application/dwf" />
+                <data android:mimeType="application/x-dwf" />
+                <data android:mimeType="image/vnd.dwg" />
+                <data android:mimeType="image/x-dwg" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
 
-            <!-- WhatsApp ve diger uygulamalar icin extension tabanli filtre -->
+            <!-- content:// URIs whose path actually ends in .dwg/.dxf, including names with several dots. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\.dwf" />
+                <data android:pathPattern=".*\\.DWF" />
+                <data android:pathPattern=".*\\.pdf" />
+                <data android:pathPattern=".*\\.PDF" />
+                <data android:pathSuffix=".dwg" />
+                <data android:pathSuffix=".DWG" />
+                <data android:pathSuffix=".dxf" />
+                <data android:pathSuffix=".DXF" />
+                <data android:pathSuffix=".dwf" />
+                <data android:pathSuffix=".DWF" />
+                <data android:pathSuffix=".pdf" />
+                <data android:pathSuffix=".PDF" />
+            </intent-filter>
+
+            <!-- Same paths when the sender omits the MIME type. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:host="*" android:pathPattern=".*\\.dwg" />
-                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.DWG" />
-                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.dxf" />
-                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.DXF" />
-                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.dwf" />
-                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.DWF" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.dwg" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.DWG" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.dxf" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.DXF" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.dwf" />
-                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.DWF" />
+                <data android:host="*" android:pathPattern=".*\\..*\\.dwg" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\.dwg" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\.dwg" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dwg" />
+                <data android:host="*" android:pathPattern=".*\\.DWG" />
+                <data android:host="*" android:pathPattern=".*\\..*\\.DWG" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\.DWG" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\.DWG" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DWG" />
+                <data android:host="*" android:pathPattern=".*\\.dxf" />
+                <data android:host="*" android:pathPattern=".*\\..*\\.dxf" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\.dxf" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\.dxf" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dxf" />
+                <data android:host="*" android:pathPattern=".*\\.DXF" />
+                <data android:host="*" android:pathPattern=".*\\..*\\.DXF" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\.DXF" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\.DXF" />
+                <data android:host="*" android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DXF" />
+                <data android:host="*" android:pathPattern=".*\\.dwf" />
+                <data android:host="*" android:pathPattern=".*\\.DWF" />
+                <data android:host="*" android:pathPattern=".*\\.pdf" />
+                <data android:host="*" android:pathPattern=".*\\.PDF" />
+                <data android:host="*" android:pathSuffix=".dwg" />
+                <data android:host="*" android:pathSuffix=".DWG" />
+                <data android:host="*" android:pathSuffix=".dxf" />
+                <data android:host="*" android:pathSuffix=".DXF" />
+            </intent-filter>
+
+            <!--
+              file:///path has an empty host, so host="*" does not match.
+              sspPattern matches the scheme-specific part without requiring a host.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="*/*" />
+                <data android:sspPattern=".*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\.dwf" />
+                <data android:sspPattern=".*\\.DWF" />
+                <data android:sspPattern=".*\\.pdf" />
+                <data android:sspPattern=".*\\.PDF" />
             </intent-filter>
 
             <intent-filter>
-                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" android:sspPattern=".*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.dwg" />
+                <data android:sspPattern=".*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.DWG" />
+                <data android:sspPattern=".*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.dxf" />
+                <data android:sspPattern=".*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\..*\\..*\\..*\\..*\\.DXF" />
+                <data android:sspPattern=".*\\.pdf" />
+                <data android:sspPattern=".*\\.PDF" />
+                <data android:sspPattern=".*\\.dwf" />
+                <data android:sspPattern=".*\\.DWF" />
             </intent-filter>
 
+            <!-- file://localhost/storage/... still has a host, so pathPattern applies. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" android:host="*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dwg" />
+                <data android:pathPattern=".*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DWG" />
+                <data android:pathPattern=".*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.dxf" />
+                <data android:pathPattern=".*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.DXF" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.DXF" />
+                <data android:pathSuffix=".dwg" />
+                <data android:pathSuffix=".DWG" />
+                <data android:pathSuffix=".dxf" />
+                <data android:pathSuffix=".DXF" />
+            </intent-filter>
+
+            <!--
+              Share sheet intents carry the URI in EXTRA_STREAM and often have no data URI.
+              A scheme requirement would hide the app, so this filter matches on MIME only.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/acad" />
-                <data android:mimeType="application/autocad_dwg" />
-                <data android:mimeType="application/dwg" />
-                <data android:mimeType="application/dxf" />
-                <data android:mimeType="application/dwf" />
-                <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="application/x-acad" />
+                <data android:mimeType="application/autocad_dwg" />
                 <data android:mimeType="application/x-autocad" />
+                <data android:mimeType="application/dwg" />
                 <data android:mimeType="application/x-dwg" />
+                <data android:mimeType="application/dxf" />
                 <data android:mimeType="application/x-dxf" />
+                <data android:mimeType="application/dwf" />
                 <data android:mimeType="application/x-dwf" />
                 <data android:mimeType="image/vnd.dwg" />
+                <data android:mimeType="image/x-dwg" />
                 <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
         </activity>

@@ -1,6 +1,7 @@
 import {
   ACadVersion,
   Arc,
+  AttachmentPointType,
   BlockRecord,
   CadDocument,
   Circle,
@@ -20,6 +21,8 @@ import {
   MText,
   Spline,
   TextEntity,
+  TextHorizontalAlignment,
+  TextVerticalAlignmentType,
   XYZ,
   XY,
 } from '@node-projects/acad-ts'
@@ -97,6 +100,41 @@ export function buildSampleDocument() {
   note.height = 3.2
   note.layer = text
   doc.modelSpace.entities.add(note)
+
+  const turkish = new MText('G\\U+00FCNE\\U+015E ENERJ\\U+0130S\\U+0130\\P%%c200 \\H1.2x;kV {\\C1;trafo}')
+  turkish.insertPoint = new XYZ(8, 58, 0)
+  turkish.height = 2.4
+  turkish.rectangleWidth = 80
+  turkish.attachmentPoint = AttachmentPointType.TopLeft
+  turkish.layer = text
+  doc.modelSpace.entities.add(turkish)
+
+  const rotated = new TextEntity('TRAFO')
+  rotated.insertPoint = new XYZ(96, 18, 0)
+  rotated.alignmentPoint = new XYZ(96, 18, 0)
+  rotated.height = 2.2
+  rotated.rotation = Math.PI / 2
+  rotated.horizontalAlignment = TextHorizontalAlignment.Center
+  rotated.verticalAlignment = TextVerticalAlignmentType.Middle
+  rotated.widthFactor = 0.85
+  rotated.obliqueAngle = (15 * Math.PI) / 180
+  rotated.layer = text
+  doc.modelSpace.entities.add(rotated)
+
+  const tiny = new TextEntity('etiket')
+  tiny.insertPoint = new XYZ(40, 40, 0)
+  tiny.height = 0.15
+  tiny.layer = text
+  doc.modelSpace.entities.add(tiny)
+
+  const cable = new LwPolyline([
+    new LwPolylineVertex(new XY(10, 44)),
+    new LwPolylineVertex(new XY(70, 44)),
+    new LwPolylineVertex(new XY(70, 52)),
+  ])
+  cable.constantWidth = 0.8
+  cable.layer = site
+  doc.modelSpace.entities.add(cable)
 
   const windowBlock = new BlockRecord('WINDOW')
   const frame = new Line(new XYZ(0, 0, 0), new XYZ(16, 0, 0))

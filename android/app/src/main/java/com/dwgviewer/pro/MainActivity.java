@@ -24,8 +24,8 @@ import com.getcapacitor.BridgeActivity;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Locale;
 import org.json.JSONObject;
@@ -166,15 +166,17 @@ public class MainActivity extends BridgeActivity {
             return;
         }
 
-        Log.d(TAG, "Handling URI: " + uri.toString());
+        Log.d(TAG, "Handling URI: " + uri + " flags=" + intent.getFlags());
         final Uri fileUri = uri;
         final String intentType = intent.getType();
+        final int grantFlags = intent.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
 
         new Thread(() -> {
             try {
-                JSONObject payload = buildFilePayload(fileUri, intentType);
+                File cached = copyUriToCache(fileUri, grantFlags);
+                JSONObject payload = buildFilePayload(fileUri, cached, intentType);
                 Log.d(TAG, "File payload built successfully, dispatching event");
-                dispatchWindowEvent(OPEN_FILE_EVENT, payload, 600);
+                dispatchWindowEvent(OPEN_FILE_EVENT, payload, 400);
             } catch (Exception exception) {
                 Log.e(TAG, "Error building file payload", exception);
                 dispatchOpenError(exception);
@@ -202,20 +204,55 @@ public class MainActivity extends BridgeActivity {
         return null;
     }
 
-    private JSONObject buildFilePayload(Uri uri, String fallbackMimeType) throws Exception {
-        String mimeType = getContentResolver().getType(uri);
+    private JSONObject buildFilePayload(Uri uri, File cached, String fallbackMimeType) throws Exception {
+        String mimeType = null;
+        try {
+            mimeType = getContentResolver().getType(uri);
+        } catch (Exception ignored) {}
         if (mimeType == null || mimeType.trim().isEmpty()) mimeType = fallbackMimeType;
         if (mimeType == null || mimeType.trim().isEmpty()) mimeType = "application/octet-stream";
 
         String displayName = resolveDisplayName(uri);
-        byte[] bytes = readUriBytes(uri);
+        byte[] bytes;
+        try (FileInputStream input = new FileInputStream(cached)) {
+            bytes = readStream(input);
+        }
         return payloadFromBytes(bytes, displayName, mimeType, "Paylasim > " + displayName);
     }
 
+    private File copyUriToCache(Uri uri, int grantFlags) throws Exception {
+        if (grantFlags != 0) {
+            try {
+                getContentResolver().takePersistableUriPermission(uri, grantFlags);
+            } catch (Exception ignored) {}
+        }
+        File dir = new File(getCacheDir(), "incoming");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IllegalStateException("Onbellek klasoru acilamadi.");
+        }
+        File[] older = dir.listFiles();
+        if (older != null) {
+            for (File file : older) {
+                if (file.getName().startsWith("open-")) file.delete();
+            }
+        }
+        File out = new File(dir, "open-" + System.currentTimeMillis() + ".bin");
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(out)) {
+            if (input == null) throw new IllegalStateException("Dosya okunamadi.");
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+        }
+        return out;
+    }
+
     private JSONObject payloadFromBytes(byte[] bytes, String displayName, String mimeType, String sourcePath) throws Exception {
-        String sniffed = sniffExtension(bytes);
-        displayName = ensureSupportedFileName(displayName, mimeType, sniffed);
-        if (!isDrawingName(displayName)) {
+        String sniffed = DrawingSniffer.sniffExtension(bytes);
+        displayName = DrawingSniffer.ensureFileName(displayName, mimeType, sniffed);
+        if (!DrawingSniffer.isDrawingName(displayName)) {
             throw new IllegalArgumentException("Paylasilan dosya DWG, DXF veya PDF degil.");
         }
         Log.d(TAG, "Resolved name: " + displayName + ", Mime: " + mimeType + ", sniff: " + sniffed);
@@ -234,16 +271,6 @@ public class MainActivity extends BridgeActivity {
             payload.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
         }
         return payload;
-    }
-
-    private byte[] readUriBytes(Uri uri) throws Exception {
-        try {
-            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (Exception ignored) {}
-        try (InputStream input = getContentResolver().openInputStream(uri)) {
-            if (input == null) throw new IllegalStateException("Dosya okunamadi.");
-            return readStream(input);
-        }
     }
 
     private byte[] readStream(InputStream input) throws Exception {
@@ -269,29 +296,17 @@ public class MainActivity extends BridgeActivity {
         dispatchWindowEvent(OPEN_ERROR_EVENT, payload, 400);
     }
 
-    private String sniffExtension(byte[] bytes) {
-        int length = Math.min(bytes.length, 256);
-        if (length == 0) return "";
-        String head = new String(bytes, 0, length, StandardCharsets.ISO_8859_1);
-        String trimmed = head.trim();
-        if (trimmed.startsWith("AC10")) return ".dwg";
-        if (trimmed.startsWith("%PDF")) return ".pdf";
-        if (trimmed.startsWith("AutoCAD Binary DXF")) return ".dxf";
-        String compact = trimmed.replace("\u0000", "");
-        if (compact.contains("SECTION") || compact.startsWith("0")) return ".dxf";
-        return "";
-    }
-
-    private boolean isDrawingName(String displayName) {
-        String lowerName = displayName.toLowerCase(Locale.ROOT);
-        return lowerName.endsWith(".dwg") || lowerName.endsWith(".dxf") || lowerName.endsWith(".dwf") || lowerName.endsWith(".pdf");
-    }
-
     private String resolveDisplayName(Uri uri) {
         String displayName = null;
 
         if ("content".equals(uri.getScheme())) {
-            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            try (Cursor cursor = getContentResolver().query(
+                uri,
+                new String[] { OpenableColumns.DISPLAY_NAME },
+                null,
+                null,
+                null
+            )) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                     if (index >= 0) displayName = cursor.getString(index);
@@ -312,24 +327,6 @@ public class MainActivity extends BridgeActivity {
             displayName = displayName.substring(slashIndex + 1);
         }
 
-        return displayName;
-    }
-
-    private String ensureSupportedFileName(String displayName, String mimeType, String sniffed) {
-        String lowerName = displayName.toLowerCase(Locale.ROOT);
-        boolean named = isDrawingName(displayName);
-        if (sniffed != null && !sniffed.isEmpty() && !lowerName.endsWith(sniffed)) {
-            int dot = named ? displayName.lastIndexOf('.') : -1;
-            String stem = dot > 0 ? displayName.substring(0, dot) : displayName;
-            return stem + sniffed;
-        }
-        if (named) return displayName;
-
-        String lowerMime = mimeType == null ? "" : mimeType.toLowerCase(Locale.ROOT);
-        if (lowerMime.contains("pdf")) return displayName + ".pdf";
-        if (lowerMime.contains("dxf")) return displayName + ".dxf";
-        if (lowerMime.contains("dwf")) return displayName + ".dwf";
-        if (lowerMime.contains("dwg") || lowerMime.contains("acad")) return displayName + ".dwg";
         return displayName;
     }
 

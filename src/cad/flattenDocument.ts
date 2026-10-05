@@ -1,8 +1,9 @@
-import type { DrawingDocument, DrawingEntity, DrawingLayerInfo, Point2 } from '../drawingTypes'
-import { dashForLineType, rgbCss, sampleEllipse, tessellatePolyline } from './geometry'
+import type { DrawingDocument, DrawingEntity, DrawingExtents, DrawingLayerInfo, Point2, TextHAlign, TextVAlign } from '../drawingTypes'
+import { dashForLineType, orderSolidPoints, rgbCss, sampleEllipse, tessellatePolyline } from './geometry'
+import { parseMText, plainMText } from './mtext'
 
 type CadLike = {
-  header?: { version?: number } | null
+  header?: { version?: number; modelSpaceExtMin?: Xyz; modelSpaceExtMax?: Xyz } | null
   layers?: Iterable<LayerLike> | null
   layouts?: Iterable<LayoutLike> | null
   modelSpace?: BlockLike | null
@@ -65,8 +66,20 @@ type EntityLike = {
   value?: string
   plainText?: string
   insertPoint?: Xyz
+  alignmentPoint?: Xyz
   height?: number
   rotation?: number
+  widthFactor?: number
+  obliqueAngle?: number
+  horizontalAlignment?: number
+  verticalAlignment?: number
+  attachmentPoint?: number
+  rectangleWidth?: number
+  lineSpacing?: number
+  constantWidth?: number
+  startWidth?: number
+  style?: { height?: number; width?: number; obliqueAngle?: number; lastHeight?: number } | null
+  pattern?: { name?: string } | null
   paths?: Array<{ getPoints?: (precision?: number) => Xyz[] }>
   isSolid?: boolean
   explode?: () => Iterable<EntityLike>
@@ -140,6 +153,42 @@ function radiansToDegrees(value: number) {
   return (value * 180) / Math.PI
 }
 
+function positive(value: number | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 1e-8 ? value : undefined
+}
+
+function resolveTextHeight(entity: EntityLike) {
+  return positive(entity.height) ?? positive(entity.style?.height) ?? positive(entity.style?.lastHeight) ?? 2.5
+}
+
+function textAlign(horizontal: number, vertical: number): { halign: TextHAlign; valign: TextVAlign } {
+  let halign: TextHAlign = 'left'
+  let valign: TextVAlign = 'baseline'
+  if (horizontal === 1 || horizontal === 4) halign = 'center'
+  if (horizontal === 2) halign = 'right'
+  if (vertical === 1) valign = 'bottom'
+  if (vertical === 2 || horizontal === 4) valign = 'middle'
+  if (vertical === 3) valign = 'top'
+  return { halign, valign }
+}
+
+function mtextAlign(attachment: number): { halign: TextHAlign; valign: TextVAlign } {
+  const column = (Math.min(9, Math.max(1, attachment || 1)) - 1) % 3
+  const row = Math.floor((Math.min(9, Math.max(1, attachment || 1)) - 1) / 3)
+  const halign: TextHAlign = column === 1 ? 'center' : column === 2 ? 'right' : 'left'
+  const valign: TextVAlign = row === 0 ? 'top' : row === 1 ? 'middle' : 'bottom'
+  return { halign, valign }
+}
+
+function polylineWidth(entity: EntityLike) {
+  const constant = positive(entity.constantWidth)
+  if (constant) return constant
+  const vertices = asArray(entity.vertices as Iterable<{ startWidth?: number; endWidth?: number }>)
+  const widths = vertices.flatMap((vertex) => [vertex.startWidth ?? 0, vertex.endWidth ?? 0]).filter((value) => value > 1e-8)
+  if (widths.length) return widths.reduce((sum, value) => sum + value, 0) / widths.length
+  return positive(entity.startWidth)
+}
+
 function asArray<T>(value: Iterable<T> | null | undefined): T[] {
   if (!value) return []
   return [...value]
@@ -197,11 +246,13 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
       ? { points: (entity.vertices as Array<{ location?: Xyz }> | undefined)?.map((vertex) => xy(vertex.location)) ?? [], bulges: [] }
       : vertexPoints(entity)
     if (points.length < 2) return []
+    const strokeWidth = polylineWidth(entity)
     return [{
       type: 'polyline',
       ...style,
       points: tessellatePolyline(points, bulges, Boolean(entity.isClosed)),
       closed: Boolean(entity.isClosed),
+      ...(strokeWidth ? { strokeWidth } : {}),
     }]
   }
 
@@ -235,32 +286,57 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
   }
 
   if (name === 'TEXT' || name === 'ATTDEF' || name === 'ATTRIB') {
-    const text = entity.value?.trim()
+    const lines = parseMText(entity.value ?? '')
+    const text = plainMText(entity.value ?? '')
     if (!text) return []
-    const anchor = entity.insertPoint ?? entity.center
+    const horizontal = entity.horizontalAlignment ?? 0
+    const vertical = entity.verticalAlignment ?? 0
+    const useAlignment = horizontal !== 0 || vertical !== 0
+    const anchor = (useAlignment ? entity.alignmentPoint : undefined) ?? entity.insertPoint ?? entity.center
+    const align = textAlign(horizontal, vertical)
+    const height = resolveTextHeight(entity)
+    const widthFactor = positive(entity.widthFactor) ?? positive(entity.style?.width) ?? 1
+    const oblique = radiansToDegrees(entity.obliqueAngle ?? entity.style?.obliqueAngle ?? 0)
     return [{
       type: 'text',
       ...style,
       x: anchor?.x ?? 0,
       y: anchor?.y ?? 0,
       text,
-      height: Math.max(0.1, entity.height ?? 2.5),
+      lines,
+      height,
       rotation: radiansToDegrees(entity.rotation ?? 0),
+      widthFactor,
+      oblique,
+      halign: align.halign,
+      valign: align.valign,
+      lineSpacing: 1,
     }]
   }
 
   if (name === 'MTEXT') {
-    const text = (entity.plainText || entity.value || '').trim()
+    const lines = parseMText(entity.value || entity.plainText || '')
+    const text = plainMText(entity.value || entity.plainText || '')
     if (!text) return []
     const anchor = entity.insertPoint
+    const align = mtextAlign(entity.attachmentPoint ?? 1)
+    const height = resolveTextHeight(entity)
+    const boxWidth = positive(entity.rectangleWidth)
     return [{
       type: 'text',
       ...style,
       x: anchor?.x ?? 0,
       y: anchor?.y ?? 0,
       text,
-      height: Math.max(0.1, entity.height ?? 2.5),
+      lines,
+      height,
       rotation: radiansToDegrees(entity.rotation ?? 0),
+      widthFactor: positive(entity.style?.width) ?? 1,
+      oblique: radiansToDegrees(entity.style?.obliqueAngle ?? 0),
+      halign: align.halign,
+      valign: align.valign,
+      ...(boxWidth ? { boxWidth } : {}),
+      lineSpacing: positive(entity.lineSpacing) ?? 1,
     }]
   }
 
@@ -279,18 +355,20 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
       .filter((point): point is Xyz => Boolean(point))
       .map((point) => xy(point))
     if (points.length < 3) return []
-    return [{ type: 'solid', layer: style.layer, color: style.color, points }]
+    return [{ type: 'solid', layer: style.layer, color: style.color, points: orderSolidPoints(points) }]
   }
 
   if (name === 'HATCH') {
+    const patternName = entity.pattern?.name?.toUpperCase() ?? ''
+    const solidFill = Boolean(entity.isSolid) || patternName === 'SOLID'
     const outlines = (entity.paths ?? []).flatMap((path) => {
       try {
-        return [((path.getPoints?.(6) ?? []).map((point) => xy(point)))]
+        return [((path.getPoints?.(16) ?? []).map((point) => xy(point)))]
       } catch {
         return []
       }
     }).filter((points) => points.length >= 3)
-    const solids: DrawingEntity[] = entity.isSolid
+    const solids: DrawingEntity[] = solidFill
       ? outlines.map((points) => ({ type: 'solid' as const, layer: style.layer, color: style.color, points }))
       : outlines.map((points) => ({ type: 'polyline' as const, ...style, points, closed: true }))
     let pattern: DrawingEntity[] = []
@@ -403,11 +481,17 @@ export function flattenCadDocument(doc: CadLike, format: 'dwg' | 'dxf'): Drawing
   }
   const unique = [...new Set(warnings)].slice(0, 16)
   const versionCode = doc.header?.version ?? -1
+  const min = doc.header?.modelSpaceExtMin
+  const max = doc.header?.modelSpaceExtMax
+  const extents: DrawingExtents | null = min && max
+    ? { minX: min.x, minY: min.y, maxX: max.x, maxY: max.y }
+    : null
   return {
     format,
     version: VERSION_NAMES[versionCode] ?? (format === 'dxf' ? 'DXF' : `DWG ${versionCode}`),
     layers: layers.length ? layers : [{ name: '0', color: '#ffffff', visible: true }],
     layouts,
+    extents,
     warnings: unique.length ? [`Bazi nesneler cizilemedi: ${unique.join(', ')}`] : [],
   }
 }

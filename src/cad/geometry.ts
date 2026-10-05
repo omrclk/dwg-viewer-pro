@@ -90,17 +90,13 @@ export function sampleEllipse(
   return points
 }
 
-export function plainMText(value: string) {
-  return value
-    .replace(/\\P/g, '\n')
-    .replace(/\\~/g, ' ')
-    .replace(/\\\{|\\\}/g, '')
-    .replace(/\{[^;]*;/g, '')
-    .replace(/\}/g, '')
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, 'Ø')
-    .trim()
+/** SOLID/TRACE store the 3rd and 4th corners crossed. Drawing them in file order makes a bowtie that looks like a bar. */
+export function orderSolidPoints(points: Point2[]): Point2[] {
+  if (points.length < 4) return points
+  const [first, second, third, fourth] = points
+  const same = Math.hypot(third.x - fourth.x, third.y - fourth.y) < 1e-6
+  if (same) return [first, second, third]
+  return [first, second, fourth, third]
 }
 
 const ACI_BASIC = ['#000000', '#ff0000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff', '#ffffff', '#808080', '#c0c0c0']

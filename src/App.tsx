@@ -777,9 +777,13 @@ function App() {
     [dxfEntities, hiddenLayers],
   )
   const coordMode = visibleDxfEntities.length ? 'dxf' : 'demo'
+  const sceneBounds = useMemo(
+    () => (visibleDxfEntities.length ? boundsForEntities(visibleDxfEntities, openedFile?.document?.extents) : null),
+    [openedFile?.document?.extents, visibleDxfEntities],
+  )
   const dxfTransform = useMemo(
-    () => (visibleDxfEntities.length ? buildDxfTransform(boundsForEntities(visibleDxfEntities), viewSize.width, viewSize.height) : undefined),
-    [viewSize.height, viewSize.width, visibleDxfEntities],
+    () => (sceneBounds ? buildDxfTransform(sceneBounds, viewSize.width, viewSize.height) : undefined),
+    [sceneBounds, viewSize.height, viewSize.width],
   )
   const measureHint = activeMeasureMode ? MEASURE_HINTS[activeMeasureMode] : ''
 
@@ -799,11 +803,26 @@ function App() {
   useEffect(() => {
     const element = contentRef.current
     if (!element || screen !== 'viewer') return
-    const update = () => setViewSize({ width: Math.max(1, element.clientWidth), height: Math.max(1, element.clientHeight) })
+    const update = () => {
+      const stage = element.closest('.cad-stage')
+      const target = stage instanceof HTMLElement ? stage : element
+      setViewSize({
+        width: Math.max(1, Math.round(target.clientWidth)),
+        height: Math.max(1, Math.round(target.clientHeight)),
+      })
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(element)
-    return () => observer.disconnect()
+    const stage = element.closest('.cad-stage')
+    if (stage instanceof HTMLElement && stage !== element) observer.observe(stage)
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+    }
   }, [screen, openedFile?.name, openedFile?.layoutName])
 
   useEffect(() => {
@@ -2285,6 +2304,8 @@ function App() {
                   theme={appSettings.theme}
                   viewWidth={viewSize.width}
                   viewHeight={viewSize.height}
+                  bounds={sceneBounds}
+                  viewScale={viewport.scale}
                 />
               ) : (
                 <div className="native-format-card">

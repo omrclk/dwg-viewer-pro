@@ -1,5 +1,6 @@
-import type { DrawingDocument, DrawingEntity, DrawingLayerInfo, Point2 } from './drawingTypes'
-import { aciColor, dashForLineType, plainMText, sampleEllipse, tessellatePolyline } from './cad/geometry'
+import type { DrawingDocument, DrawingEntity, DrawingLayerInfo, Point2, TextHAlign, TextVAlign } from './drawingTypes'
+import { aciColor, dashForLineType, orderSolidPoints, sampleEllipse, tessellatePolyline } from './cad/geometry'
+import { parseMText, plainMText } from './cad/mtext'
 
 type Pair = [string, string]
 type Group = { type: string; pairs: Pair[] }
@@ -65,10 +66,45 @@ function styleOf(group: Group, layers: Map<string, DrawingLayerInfo>) {
   return { layer, color, dash: dashForLineType(lineType) ?? undefined }
 }
 
-function polylineFromVertices(points: Point2[], bulges: number[], closed: boolean, style: ReturnType<typeof styleOf>): DrawingEntity | null {
+function polylineFromVertices(
+  points: Point2[],
+  bulges: number[],
+  closed: boolean,
+  style: ReturnType<typeof styleOf>,
+  strokeWidth?: number,
+): DrawingEntity | null {
   const sampled = tessellatePolyline(points, bulges, closed)
   if (sampled.length < 2) return null
-  return { type: 'polyline', layer: style.layer, points: sampled, closed, color: style.color, dash: style.dash }
+  return {
+    type: 'polyline',
+    layer: style.layer,
+    points: sampled,
+    closed,
+    color: style.color,
+    dash: style.dash,
+    ...(strokeWidth && strokeWidth > 0 ? { strokeWidth } : {}),
+  }
+}
+
+function textCodes(horizontal: number, vertical: number): { halign: TextHAlign; valign: TextVAlign } {
+  let halign: TextHAlign = 'left'
+  let valign: TextVAlign = 'baseline'
+  if (horizontal === 1 || horizontal === 4) halign = 'center'
+  if (horizontal === 2) halign = 'right'
+  if (vertical === 1) valign = 'bottom'
+  if (vertical === 2 || horizontal === 4) valign = 'middle'
+  if (vertical === 3) valign = 'top'
+  return { halign, valign }
+}
+
+function mtextCodes(attachment: number): { halign: TextHAlign; valign: TextVAlign } {
+  const safe = Math.min(9, Math.max(1, attachment || 1))
+  const column = (safe - 1) % 3
+  const row = Math.floor((safe - 1) / 3)
+  return {
+    halign: column === 1 ? 'center' : column === 2 ? 'right' : 'left',
+    valign: row === 0 ? 'top' : row === 1 ? 'middle' : 'bottom',
+  }
 }
 
 function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): DrawingEntity | null {
@@ -121,40 +157,67 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
 
   if (group.type === 'SOLID' || group.type === 'TRACE') {
     const points = [10, 11, 12, 13].map((code) => ({ x: num(group, String(code)), y: num(group, String(code + 10)) }))
-    return { type: 'solid', layer: style.layer, points, color: style.color }
+    return { type: 'solid', layer: style.layer, points: orderSolidPoints(points), color: style.color }
   }
 
   if (group.type === 'TEXT' || group.type === 'ATTRIB' || group.type === 'ATTDEF') {
-    const text = str(group, '1')
+    const raw = str(group, '1')
+    const lines = parseMText(raw)
+    const text = plainMText(raw)
     if (!text) return null
+    const horizontal = num(group, '72')
+    const vertical = num(group, '73')
     const alignX = num(group, '11', Number.NaN)
     const alignY = num(group, '21', Number.NaN)
-    const x = Number.isFinite(alignX) && (num(group, '72') !== 0 || num(group, '73') !== 0) ? alignX : num(group, '10')
-    const y = Number.isFinite(alignY) && (num(group, '72') !== 0 || num(group, '73') !== 0) ? alignY : num(group, '20')
+    const justified = horizontal !== 0 || vertical !== 0
+    const x = justified && Number.isFinite(alignX) ? alignX : num(group, '10')
+    const y = justified && Number.isFinite(alignY) ? alignY : num(group, '20')
+    const align = textCodes(horizontal, vertical)
+    const widthFactor = num(group, '41', 1) || 1
     return {
       type: 'text',
       layer: style.layer,
       x,
       y,
       text,
-      height: Math.max(0.1, num(group, '40', 2.5)),
+      lines,
+      height: Math.max(1e-4, num(group, '40', 2.5)),
       rotation: num(group, '50'),
+      widthFactor,
+      oblique: num(group, '51'),
+      halign: align.halign,
+      valign: align.valign,
+      lineSpacing: 1,
       color: style.color,
     }
   }
 
   if (group.type === 'MTEXT') {
     const raw = group.pairs.filter(([code]) => code === '1' || code === '3').map(([, value]) => value).join('')
+    const lines = parseMText(raw)
     const text = plainMText(raw)
     if (!text) return null
+    const dirX = num(group, '11', Number.NaN)
+    const dirY = num(group, '21', Number.NaN)
+    const rotation = Number.isFinite(dirX) && Number.isFinite(dirY) && (Math.abs(dirX) > 1e-9 || Math.abs(dirY) > 1e-9)
+      ? (Math.atan2(dirY, dirX) * 180) / Math.PI
+      : (num(group, '50') * 180) / Math.PI
+    const align = mtextCodes(num(group, '71', 1))
+    const boxWidth = num(group, '41')
     return {
       type: 'text',
       layer: style.layer,
       x: num(group, '10'),
       y: num(group, '20'),
       text,
-      height: Math.max(0.1, num(group, '40', 2.5)),
-      rotation: num(group, '50'),
+      lines,
+      height: Math.max(1e-4, num(group, '40', 2.5)),
+      rotation,
+      halign: align.halign,
+      valign: align.valign,
+      ...(boxWidth > 0 ? { boxWidth } : {}),
+      lineSpacing: num(group, '44', 1) || 1,
+      widthFactor: 1,
       color: style.color,
     }
   }
@@ -195,7 +258,10 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
     const bulges = nums(group, '42')
     const points = xs.map((x, index) => ({ x, y: ys[index] ?? 0 }))
     const closed = (num(group, '70') & 1) === 1
-    return polylineFromVertices(points, bulges, closed, style)
+    const constant = num(group, '43')
+    const vertexWidths = group.pairs.filter(([code]) => code === '40' || code === '41').map(([, value]) => Number.parseFloat(value)).filter((value) => value > 0)
+    const strokeWidth = constant > 0 ? constant : vertexWidths.length ? vertexWidths.reduce((sum, value) => sum + value, 0) / vertexWidths.length : 0
+    return polylineFromVertices(points, bulges, closed, style, strokeWidth)
   }
 
   if (group.type === 'LEADER') {
@@ -317,7 +383,18 @@ function transformEntity(entity: DrawingEntity, insert: InsertRef, base: Point2)
     return { ...entity, layer: entity.layer || insert.layer, points: entity.points.map(map), color }
   }
   const anchor = map({ x: entity.x, y: entity.y })
-  return { ...entity, layer: entity.layer || insert.layer, x: anchor.x, y: anchor.y, rotation: entity.rotation + insert.rotation, height: entity.height * Math.abs(insert.sy || 1), color }
+  const scaleY = Math.abs(insert.sy || 1)
+  const scaleX = Math.abs(insert.sx || 1)
+  return {
+    ...entity,
+    layer: entity.layer || insert.layer,
+    x: anchor.x,
+    y: anchor.y,
+    rotation: entity.rotation + insert.rotation,
+    height: entity.height * scaleY,
+    boxWidth: entity.boxWidth ? entity.boxWidth * scaleX : undefined,
+    color,
+  }
 }
 
 function polylineGroup(vertices: Group[], closed: boolean, layers: Map<string, DrawingLayerInfo>, owner: Group): DrawingEntity | null {
@@ -458,8 +535,31 @@ export function parseDxfDocument(text: string): DrawingDocument {
     version: 'DXF',
     layers: [...layers.values()],
     layouts: [{ name: 'Model', isModel: true, entities: model }],
+    extents: headerExtents(groups),
     warnings: uniqueWarnings.length ? [`Atlanan veya eksik nesneler: ${uniqueWarnings.join(', ')}`] : [],
   }
+}
+
+function headerExtents(groups: Group[]) {
+  const header = groups.find((group) => group.type === 'SECTION' && group.pairs.some(([code, value]) => code === '2' && value.toUpperCase() === 'HEADER'))
+  if (!header) return null
+  const read = (name: string) => {
+    const start = header.pairs.findIndex(([code, value]) => code === '9' && value.toUpperCase() === name)
+    if (start < 0) return null
+    let x = Number.NaN
+    let y = Number.NaN
+    for (let index = start + 1; index < header.pairs.length; index += 1) {
+      const [code, value] = header.pairs[index]
+      if (code === '9') break
+      if (code === '10') x = Number.parseFloat(value)
+      if (code === '20') y = Number.parseFloat(value)
+    }
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+  }
+  const min = read('$EXTMIN')
+  const max = read('$EXTMAX')
+  if (!min || !max) return null
+  return { minX: min.x, minY: min.y, maxX: max.x, maxY: max.y }
 }
 
 export function parseDxfEntities(text: string): DrawingEntity[] {
