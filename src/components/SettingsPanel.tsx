@@ -39,6 +39,7 @@ export function SettingsPanel({
         <span>Tema</span>
         <button
           type="button"
+          aria-label="Tema"
           onClick={() => onChange({ ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' })}
         >
           {settings.theme === 'dark' ? 'Koyu' : 'Açık'}

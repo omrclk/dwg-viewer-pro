@@ -713,6 +713,7 @@ function App() {
   const loadedWorkspaceKey = useRef('')
   const pressTimer = useRef<number | null>(null)
   const pressMenu = useRef(false)
+  const finishedDrawId = useRef('')
   const pendingCallout = useRef<string | null>(null)
   const moveHit = useRef<MarkupHit | null>(null)
   const moveLast = useRef<Point2 | null>(null)
@@ -1865,6 +1866,8 @@ function App() {
 
   const finalizeDrawShape = (shape: SketchShape) => {
     if (!canFinalizeDrawShape(shape.kind, shape.points)) return
+    if (finishedDrawId.current === shape.id) return
+    finishedDrawId.current = shape.id
     const stamped = { ...shape, strokeWidth: shape.strokeWidth ?? appSettings.markupStroke }
     setSketchShapes((current) => [...current, stamped])
     setDraftSketchShape(null)
@@ -1959,27 +1962,25 @@ function App() {
 
     if (isTapDrawTool(activeDrawTool)) {
       if (activeDrawTool === 'polyline' && event.detail >= 2) {
-        setDraftSketchShape((current) => {
-          if (current && canFinalizeDrawShape('polyline', current.points)) finalizeDrawShape(current)
-          return null
-        })
+        const current = draftSketchShape
+        setDraftSketchShape(null)
+        if (current) finalizeDrawShape(current)
         return
       }
 
-      setDraftSketchShape((current) => {
-        const base = current ?? {
-          id: `shape-${Date.now()}`,
-          kind: activeDrawTool,
-          color: activeMarkupColor,
-          points: [] as Point2[],
-        }
-        const next = { ...base, points: [...base.points, point] }
-        if (activeDrawTool === 'arc' && canFinalizeDrawShape('arc', next.points)) {
-          finalizeDrawShape(next)
-          return null
-        }
-        return next
-      })
+      const base = draftSketchShape ?? {
+        id: `shape-${Date.now()}`,
+        kind: activeDrawTool,
+        color: activeMarkupColor,
+        points: [] as Point2[],
+      }
+      const next = { ...base, points: [...base.points, point] }
+      if (activeDrawTool === 'arc' && canFinalizeDrawShape('arc', next.points)) {
+        setDraftSketchShape(null)
+        finalizeDrawShape(next)
+        return
+      }
+      setDraftSketchShape(next)
       return
     }
 
@@ -2022,6 +2023,7 @@ function App() {
   }
 
   const handleDrawPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setLoupe(null)
     window.clearTimeout(pressTimer.current ?? undefined)
     pressTimer.current = null
@@ -2034,12 +2036,10 @@ function App() {
 
     event.preventDefault()
     event.stopPropagation()
-    event.currentTarget.releasePointerCapture(event.pointerId)
 
-    setDraftSketchShape((current) => {
-      if (current && canFinalizeDrawShape(current.kind, current.points)) finalizeDrawShape(current)
-      return null
-    })
+    const shape = draftSketchShape
+    setDraftSketchShape(null)
+    if (shape) finalizeDrawShape(shape)
   }
 
   const handleMovePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

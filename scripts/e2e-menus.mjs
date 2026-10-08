@@ -80,11 +80,12 @@ try {
   await shot(page, 'v120-home')
   record('Ana sayfa', 'pass', 'Ev, Dosya ve Bulut görünür')
 
-  await page.getByRole('button', { name: 'Dosya' }).click()
+  const openFiles = page.getByRole('button', { name: 'Dosya', exact: true })
+  await openFiles.click()
   await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
   await page.getByRole('button', { name: 'Kapat' }).click()
   await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor({ state: 'hidden' })
-  await page.getByRole('button', { name: 'Dosya' }).click()
+  await openFiles.click()
   await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
   record('Dosya aç paneli', 'pass', 'Kapatıldıktan sonra yeniden açılır')
 
@@ -97,15 +98,16 @@ try {
 
   chooserMode = 'bad'
   await deviceButton.click()
-  await page.getByText(/DWG|DXF|PDF/i).waitFor()
+  const openStatus = page.locator('.open-files-status')
+  await openStatus.getByText(/acilabilir|okunamadi|Desteklen/i).waitFor()
   if (await deviceButton.isDisabled()) throw new Error('Hatalı dosyadan sonra kilitli')
   record('Bozuk dosya', 'pass', 'Hata panelde kalır, seçici tekrar açılır')
 
   chooserMode = 'same'
   await deviceButton.click()
-  await page.getByText(/DWG|DXF|PDF/i).waitFor()
+  await openStatus.getByText(/acilabilir|okunamadi|Desteklen/i).waitFor()
   await deviceButton.click()
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(500)
   if (await deviceButton.isDisabled()) throw new Error('Aynı dosya ikinci kez seçilemedi')
   record('Aynı dosyayı yeniden seçme', 'pass', 'İkinci seçim de tamamlandı')
 
@@ -173,15 +175,19 @@ try {
   await page.mouse.down()
   await page.mouse.move(box.x + 220, box.y + 280, { steps: 8 })
   await page.mouse.up()
-  await page.locator('.sketch-overlay line').waitFor()
+  const drawnLines = page.locator('.sketch-overlay line')
+  await drawnLines.first().waitFor()
+  const drawnCount = await drawnLines.count()
   await shot(page, 'v120-draw-line')
   record('Çizgi çizme', 'pass', 'Sürüklenen çizgi tuvalde')
 
   await page.getByRole('button', { name: 'Geri al' }).click()
-  await page.locator('.sketch-overlay line').waitFor({ state: 'detached' })
-  record('Geri al', 'pass', 'Çizilen çizgi geri alındı')
+  await page.waitForTimeout(200)
+  const afterUndo = await drawnLines.count()
+  if (afterUndo !== drawnCount - 1) throw new Error(`Geri al ${drawnCount} çizgiden ${afterUndo} bıraktı`)
+  record('Geri al', 'pass', 'Son çizgi geri alındı')
   await page.getByRole('button', { name: 'Yinele' }).click()
-  await page.locator('.sketch-overlay line').waitFor()
+  await page.waitForFunction((count) => document.querySelectorAll('.sketch-overlay line').length === count, drawnCount)
   record('Yinele', 'pass', 'Çizgi geri geldi')
 
   await dismissTransient(page)
@@ -207,20 +213,30 @@ try {
   await shot(page, 'v120-text')
   record('Metin notu', 'pass', 'Not çizime yerleştirildi')
 
+  if (await page.locator('.fv-sub-panel').count()) {
+    await page.locator('.fv-nav-item.active').click()
+  }
   await page.getByRole('button', { name: 'Menü' }).click()
-  await page.getByRole('button', { name: 'Ayarlar' }).click()
-  await page.getByRole('dialog', { name: 'Olcum ayarlari' }).waitFor()
-  await page.getByRole('button', { name: /Koyu|Açık/ }).click()
+  await page.locator('.fv-overflow-row').filter({ hasText: 'Ayarlar' }).click()
+  const settings = page.locator('.settings-panel')
+  await settings.waitFor()
+  await settings.getByRole('button', { name: 'Tema' }).click()
   await shot(page, 'v120-settings')
   record('Ayarlar ve tema', 'pass', 'Tema düğmesi çalıştı')
   await page.getByRole('button', { name: 'Ayarlari kapat' }).click()
 
   await page.getByRole('button', { name: 'Sığdır' }).click()
   await page.getByRole('button', { name: 'Yakınlaştır' }).click()
+  await page.locator('.draw-capture').waitFor()
   record('Yakınlaştır ve sığdır', 'pass', 'Üst çubuk yanıt verdi')
 
   const stayed = await page.evaluate(() => window.__dwgOnBack?.() === true)
-  record('Geri tuşu', stayed ? 'pass' : 'fail', stayed ? 'Araç veya panel kapanır, uygulama kapanmaz' : 'Geri olayı tüketilmedi')
+  const stillDrawing = (await page.locator('canvas.cad-canvas').count()) > 0
+  record(
+    'Geri tuşu',
+    stayed && stillDrawing ? 'pass' : 'fail',
+    stayed && stillDrawing ? 'Yakınlaştırma penceresi kapandı, çizim açık kaldı' : 'Geri olayı çizimden çıktı',
+  )
 
   await mkdir('/opt/cursor/artifacts', { recursive: true })
   await writeFile(checklistPath, JSON.stringify(results, null, 2))
