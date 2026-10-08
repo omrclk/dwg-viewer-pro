@@ -4,25 +4,12 @@ import {
   ArrowUpToLine,
   Box,
   CircleHelp,
-  Ellipsis,
   EyeOff,
   FileText,
   FolderOpen,
-  Layers,
-  Maximize,
-  MessageSquare,
-  Palette,
-  Pencil,
-  Printer,
-  Redo2,
   RefreshCw,
   Ruler,
-  Save,
   Settings,
-  SquarePen,
-  Undo2,
-  X,
-  ZoomIn,
 } from 'lucide-react'
 import './App.css'
 import './fastview/fastview.css'
@@ -72,6 +59,8 @@ import { screenToWorldPoint } from './screenToWorld'
 import { DEMO_SNAP_POINTS } from './demoSnapPoints'
 import { collectSnapTargets, findNearestSnap, snapToleranceInCoords } from './snapEngine'
 import { entityRenderLimit, loadSettings, resolvePerformanceMode, saveSettings, type AppSettings, type SnapKind } from './settings'
+import { loadWorkspace, saveWorkspace } from './workspaceStore'
+import { nearestMarkup, translatePoint, type MarkupHit } from './markupHit'
 import { SnapPanel } from './components/SnapPanel'
 import {
   FastViewBottomStack,
@@ -85,6 +74,7 @@ import { subMenuRows } from './fastview/menuConfig'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { VIEW_BOX } from './dxfTransform'
 import { CadCanvas } from './components/CadCanvas'
+import { TouchLoupe } from './components/TouchLoupe'
 import { UpgradeSheet } from './components/UpgradeSheet'
 import { FREE_MEASURE_LIMIT } from './billing/products'
 import { loadEntitlement, loadProProduct, purchasePro, refreshEntitlement, restorePro as restoreProPurchase } from './billing/entitlement'
@@ -104,6 +94,7 @@ declare global {
       zoomOut: () => void
       fit: () => void
     }
+    __dwgOnBack?: () => boolean
   }
 }
 
@@ -133,16 +124,6 @@ type CommentRecord = {
 type MeasureSession = 'normal' | 'continuous' | 'batch' | 'entity' | 'radius' | 'diameter'
 type MarkupPlaceMode = 'number' | 'image' | 'audio' | 'video' | null
 
-const topTools: Array<{ icon: any; label: string; action: ToolbarAction }> = [
-  { icon: FolderOpen, label: 'Open folder', action: 'open' },
-  { icon: Save, label: 'Save', action: 'save' },
-  { icon: Undo2, label: 'Undo', action: 'undo' },
-  { icon: Redo2, label: 'Redo', action: 'redo' },
-  { icon: Printer, label: 'Print', action: 'print' },
-  { icon: ZoomIn, label: 'Zoom in', action: 'zoomIn' },
-  { icon: Maximize, label: 'Fit', action: 'fit' },
-]
-
 const MIN_VIEW_SCALE = 0.2
 const MAX_VIEW_SCALE = 256
 const ZOOM_FACTOR = 1.22
@@ -159,24 +140,6 @@ const menuItems: Array<{ icon: any; label: string; action: MenuAction }> = [
   { icon: Settings, label: 'Ayarlar', action: 'settings' },
 ]
 
-const measureTools: Array<{ id: MeasureMode; label: string; iconClass: string; marker?: boolean }> = [
-  { id: 'distance', label: 'Distance', iconClass: 'distance' },
-  { id: 'area', label: 'Area', iconClass: 'area' },
-  { id: 'angle', label: 'Facade', iconClass: 'facade', marker: true },
-  { id: 'point', label: '3D Point', iconClass: 'idpoint', marker: true },
-  { id: 'arc', label: 'Arc Length', iconClass: 'arc', marker: true },
-]
-
-const bottomTools: Array<{ icon: any; label: string; action: BottomAction }> = [
-  { icon: MessageSquare, label: 'Comments', action: 'comments' },
-  { icon: Pencil, label: 'Draw', action: 'draw' },
-  { icon: SquarePen, label: 'Note', action: 'note' },
-  { icon: Layers, label: 'Layers', action: 'layers' },
-  { icon: Ruler, label: 'Measure List', action: 'measureList' },
-  { icon: Ruler, label: 'Quick Measure', action: 'quickMeasure' },
-  { icon: Palette, label: 'Color Palette', action: 'color' },
-]
-
 const MARKUP_COLORS = ['#18f4ea', '#ffb020', '#ef4444', '#22c55e', '#a855f7', '#f8fafc']
 
 function layersFromEntities(entities: DrawingEntity[]) {
@@ -189,10 +152,6 @@ function countEntitiesByLayer(entities: DrawingEntity[]) {
     counts.set(entity.layer, (counts.get(entity.layer) ?? 0) + 1)
   })
   return counts
-}
-
-function layerVisibility(hiddenLayers: Set<string>, layer: string) {
-  return hiddenLayers.has(layer) ? 'hidden' : 'visible'
 }
 
 type ViewportState = { scale: number; panX: number; panY: number }
@@ -260,12 +219,14 @@ function DrawingViewport({
   actionsRef,
   panLocked = false,
   onViewportChange,
+  onIdlePress,
 }: {
   children: (camera: ViewportState) => ReactNode
   resetKey: string
   actionsRef: React.MutableRefObject<ViewportHandle | null>
   panLocked?: boolean
   onViewportChange?: (state: ViewportState) => void
+  onIdlePress?: (clientX: number, clientY: number) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [committed, setCommitted] = useState<ViewportState>({ scale: 1, panX: 0, panY: 0 })
@@ -276,6 +237,14 @@ function DrawingViewport({
   committedRef.current = committed
   const panSession = useRef<{ pointerId: number; startX: number; startY: number; scale: number; panX: number; panY: number } | null>(null)
   const pinchSession = useRef<{ distance: number; scale: number; panX: number; panY: number } | null>(null)
+  const idleTimer = useRef<number | null>(null)
+  const idleOrigin = useRef<{ x: number; y: number } | null>(null)
+
+  const clearIdlePress = () => {
+    window.clearTimeout(idleTimer.current ?? undefined)
+    idleTimer.current = null
+    idleOrigin.current = null
+  }
 
   const setLive = (next: ViewportState) => {
     gestureRef.current = next
@@ -391,6 +360,8 @@ function DrawingViewport({
   }
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const origin = idleOrigin.current
+    if (origin && (event.clientX - origin.x) ** 2 + (event.clientY - origin.y) ** 2 > 144) clearIdlePress()
     const session = panSession.current
     if (!session || session.pointerId !== event.pointerId) return
     setLive({
@@ -401,6 +372,7 @@ function DrawingViewport({
   }
 
   const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    clearIdlePress()
     const session = panSession.current
     if (!session || session.pointerId !== event.pointerId) return
     panSession.current = null
@@ -464,7 +436,17 @@ function DrawingViewport({
   }
 
   const handlePointerDownWithState = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!panLocked && event.button === 0) setIsPanning(true)
+    if (!panLocked && event.button === 0) {
+      setIsPanning(true)
+      idleOrigin.current = { x: event.clientX, y: event.clientY }
+      window.clearTimeout(idleTimer.current ?? undefined)
+      const pressX = event.clientX
+      const pressY = event.clientY
+      idleTimer.current = window.setTimeout(() => {
+        idleOrigin.current = null
+        onIdlePress?.(pressX, pressY)
+      }, 560)
+    }
     handlePointerDown(event)
   }
 
@@ -504,6 +486,7 @@ function LayerPanel({
   layers,
   hiddenLayers,
   entityCounts,
+  layerColors,
   onToggle,
   onShowAll,
   onHideAll,
@@ -512,6 +495,7 @@ function LayerPanel({
   layers: string[]
   hiddenLayers: Set<string>
   entityCounts: Map<string, number>
+  layerColors: Map<string, string>
   onToggle: (layer: string) => void
   onShowAll: () => void
   onHideAll: () => void
@@ -524,7 +508,7 @@ function LayerPanel({
       <div className="layers-panel-header">
         <strong>Katmanlar</strong>
         <span className="layers-panel-meta">
-          {visibleCount}/{layers.length} acik
+          {visibleCount}/{layers.length} açık
         </span>
         <button type="button" className="layers-panel-close" aria-label="Katman panelini kapat" onClick={onClose}>
           x
@@ -532,10 +516,10 @@ function LayerPanel({
       </div>
       <div className="layers-panel-actions">
         <button type="button" onClick={onShowAll}>
-          Tumunu ac
+          Tümünü aç
         </button>
         <button type="button" onClick={onHideAll}>
-          Tumunu kapat
+          Tümünü kapat
         </button>
       </div>
       <ul className="layers-list">
@@ -547,6 +531,7 @@ function LayerPanel({
             <li key={layer}>
               <label className="layer-row">
                 <input type="checkbox" checked={visible} onChange={() => onToggle(layer)} />
+                <span className="layer-swatch" style={{ background: layerColors.get(layer) || '#9aa' }} aria-hidden="true" />
                 <span className="layer-name">{layer}</span>
                 {count !== undefined && <span className="layer-count">{count}</span>}
               </label>
@@ -574,14 +559,14 @@ function CommentsPanel({
   return (
     <div className="comments-panel" role="dialog" aria-label="Yorumlar">
       <div className="tool-panel-header">
-        <strong>Comments</strong>
+        <strong>Notlar</strong>
         <span>{comments.length}</span>
-        <button type="button" aria-label="Yorumlari kapat" onClick={onClose}>
+        <button type="button" aria-label="Notları kapat" onClick={onClose}>
           x
         </button>
       </div>
       <button type="button" className="tool-panel-primary" onClick={onAdd}>
-        Add comment
+        Not ekle
       </button>
       <ul className="comments-list">
         {comments.length === 0 && <li className="tool-panel-empty">Henüz yorum yok.</li>}
@@ -591,14 +576,14 @@ function CommentsPanel({
               <strong>{comment.text}</strong>
               <span>{comment.createdAt}</span>
             </div>
-            <button type="button" aria-label="Yorumu sil" onClick={() => onDelete(comment.id)}>
+            <button type="button" aria-label="Notu sil" onClick={() => onDelete(comment.id)}>
               x
             </button>
           </li>
         ))}
       </ul>
       <span className="tool-panel-current" style={{ color }}>
-        Active color
+        Seçili renk
       </span>
     </div>
   )
@@ -616,7 +601,7 @@ function ColorPalettePanel({
   return (
     <div className="color-panel" role="dialog" aria-label="Renk paleti">
       <div className="tool-panel-header">
-        <strong>Color Palette</strong>
+        <strong>Renk paleti</strong>
         <span style={{ color }}>{color}</span>
         <button type="button" aria-label="Renk paletini kapat" onClick={onClose}>
           x
@@ -721,6 +706,19 @@ function App() {
   const lastUrlRef = useRef<string | null>(null)
   const lastExternalFileIdRef = useRef<string | null>(null)
   const viewportRef = useRef<ViewportHandle | null>(null)
+  const pastEdits = useRef<string[]>([])
+  const futureEdits = useRef<string[]>([])
+  const historyLock = useRef(true)
+  const lastEditSnap = useRef('')
+  const loadedWorkspaceKey = useRef('')
+  const pressTimer = useRef<number | null>(null)
+  const pressMenu = useRef(false)
+  const pendingCallout = useRef<string | null>(null)
+  const moveHit = useRef<MarkupHit | null>(null)
+  const moveLast = useRef<Point2 | null>(null)
+  const [loupe, setLoupe] = useState<{ x: number; y: number } | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [objectMenu, setObjectMenu] = useState<{ x: number; y: number; hit: MarkupHit | null } | null>(null)
   const [openedFile, setOpenedFile] = useState<OpenedFile | null>(null)
   const [openedPath, setOpenedPath] = useState('')
   const [openPanelOpen, setOpenPanelOpen] = useState(false)
@@ -801,6 +799,16 @@ function App() {
     const base = dxfEntities?.length ? layersFromEntities(dxfEntities) : []
     return [...new Set([...base, ...customLayers])].sort((a, b) => a.localeCompare(b, 'tr'))
   }, [customLayers, dxfEntities])
+  const layerColors = useMemo(() => {
+    const colors = new Map<string, string>()
+    openedFile?.document?.layers.forEach((layer) => {
+      if (layer.color) colors.set(layer.name, layer.color)
+    })
+    dxfEntities?.forEach((entity) => {
+      if (entity.color && !colors.has(entity.layer)) colors.set(entity.layer, entity.color)
+    })
+    return colors
+  }, [dxfEntities, openedFile?.document?.layers])
   const entityCounts = useMemo(
     () => (dxfEntities?.length ? countEntitiesByLayer(dxfEntities) : new Map<string, number>()),
     [dxfEntities],
@@ -924,7 +932,14 @@ function App() {
   }
 
   useEffect(() => {
-    setHiddenLayers(new Set())
+    historyLock.current = true
+    pastEdits.current = []
+    futureEdits.current = []
+    lastEditSnap.current = ''
+    loadedWorkspaceKey.current = ''
+    const key = openedFile ? `${openedFile.name}::${openedFile.size}` : ''
+    const saved = openedFile ? loadWorkspace(openedFile.name, openedFile.size) : null
+    setHiddenLayers(new Set(saved?.hiddenLayers ?? []))
     setLayersPanelOpen(false)
     setMeasurePanelOpen(false)
     setSettingsPanelOpen(false)
@@ -936,9 +951,9 @@ function App() {
     setActiveBottomAction(null)
     setDraftPoints([])
     setDraftSketchShape(null)
-    setMeasureRecords([])
+    setMeasureRecords((saved?.measures as MeasureRecord[]) ?? [])
     setRedoMeasureRecords([])
-    setSketchShapes([])
+    setSketchShapes((saved?.sketches as SketchShape[]) ?? [])
     setMeasureSession('normal')
     setMeasureOverlaysHidden(false)
     setActiveDrawTool('sketch')
@@ -947,11 +962,53 @@ function App() {
     setActiveEditActionId(null)
     setMarkupPlaceMode(null)
     setActiveMarkupActionId(null)
-    setNumberMarkers([])
+    setNumberMarkers((saved?.numbers as NumberMarker[]) ?? [])
     setMediaMarkers([])
     setPendingImageUrl(null)
+    setTextNotes((saved?.notes as TextNote[]) ?? [])
+    setComments((saved?.comments as CommentRecord[]) ?? [])
+    setUnitsPerDrawingUnit(saved?.unitsPerDrawingUnit && saved.unitsPerDrawingUnit > 0 ? saved.unitsPerDrawingUnit : 0.01)
+    setUnitLabel(saved?.unitLabel || 'm')
     setCustomLayers([])
-  }, [openedFile?.name, openedFile?.format])
+    loadedWorkspaceKey.current = key
+    const unlock = window.setTimeout(() => {
+      historyLock.current = false
+    }, 0)
+    return () => window.clearTimeout(unlock)
+  }, [openedFile?.format, openedFile?.name, openedFile?.size])
+
+  useEffect(() => {
+    const snap = JSON.stringify({ sketchShapes, measureRecords, textNotes, numberMarkers, comments, unitsPerDrawingUnit, unitLabel })
+    if (historyLock.current) {
+      lastEditSnap.current = snap
+      return
+    }
+    if (!lastEditSnap.current) {
+      lastEditSnap.current = snap
+      return
+    }
+    if (snap === lastEditSnap.current) return
+    pastEdits.current.push(lastEditSnap.current)
+    if (pastEdits.current.length > 40) pastEdits.current.shift()
+    futureEdits.current = []
+    lastEditSnap.current = snap
+  }, [comments, measureRecords, numberMarkers, sketchShapes, textNotes, unitLabel, unitsPerDrawingUnit])
+
+  useEffect(() => {
+    if (!openedFile) return
+    const key = `${openedFile.name}::${openedFile.size}`
+    if (loadedWorkspaceKey.current !== key) return
+    saveWorkspace(openedFile.name, openedFile.size, {
+      sketches: sketchShapes,
+      measures: measureRecords,
+      notes: textNotes,
+      numbers: numberMarkers,
+      comments,
+      hiddenLayers: [...hiddenLayers],
+      unitsPerDrawingUnit,
+      unitLabel,
+    })
+  }, [comments, hiddenLayers, measureRecords, numberMarkers, openedFile, sketchShapes, textNotes, unitLabel, unitsPerDrawingUnit])
 
   const closeInteractionModes = () => {
     setDrawModeOpen(false)
@@ -1100,7 +1157,7 @@ function App() {
 
     const record = buildMeasureRecord(mode, points, unitsPerDrawingUnit, unitLabel, {
       label:
-        measureSession === 'radius' ? 'Radius' : measureSession === 'diameter' ? 'Cap' : undefined,
+        measureSession === 'radius' ? 'Yarıçap' : measureSession === 'diameter' ? 'Çap' : undefined,
       decimals: appSettings.measureDecimals,
     })
     if (record) {
@@ -1117,6 +1174,7 @@ function App() {
   const handleMeasurePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activeMeasureMode || !contentRef.current) return
     event.stopPropagation()
+    setLoupe({ x: event.clientX, y: event.clientY })
 
     if (activeMeasureMode === 'area' && event.detail === 2) {
       event.preventDefault()
@@ -1356,7 +1414,16 @@ function App() {
       return
     }
 
+    if (actionId === 'ann-leader' || actionId === 'draw-multileader') {
+      const text = window.prompt('Gösterge metni', 'Not')?.trim()
+      pendingCallout.current = text || null
+      if (selectDrawTool(actionId)) {
+        notify(text ? 'Gösterge: oku çizin, metin başlangıca yazılır.' : 'Ok: başlangıçtan hedefe sürükleyin.')
+      }
+      return
+    }
     if (actionIdToDrawTool(actionId)) {
+      pendingCallout.current = null
       if (selectDrawTool(actionId)) return
     }
     if (actionId === 'ann-text' || actionId === 'draw-text') {
@@ -1382,12 +1449,8 @@ function App() {
       return
     }
     if (actionId === 'draw-smartpen') {
+      pendingCallout.current = null
       if (selectDrawTool('draw-sketch')) return
-    }
-    if (actionId === 'draw-divide') {
-      selectMeasureMode('distance', 'normal', actionId)
-      notify('Bolme: mesafe olcumu ile iki nokta arasini bolun.')
-      return
     }
 
     if (actionIdToEditTool(actionId)) {
@@ -1425,8 +1488,13 @@ function App() {
     if (action === 'layout') {
       const layouts = openedFile?.document?.layouts ?? []
       if (layouts.length < 2) {
-        togglePerformanceMode()
-        notify('Bu cizimde tek duzen var. Performans modu degisti.')
+        if (document.fullscreenElement) {
+          void document.exitFullscreen()
+          notify('Tam ekran kapandi.')
+        } else {
+          void document.documentElement.requestFullscreen?.()
+          notify('Tam ekran acildi.')
+        }
         return
       }
       const current = openedFile?.layoutName ?? 'Model'
@@ -1453,8 +1521,9 @@ function App() {
     try {
       const base = (openedFile?.name ?? 'cizim').replace(/\.[^.]+$/, '')
       const watermark = pro ? null : 'DWG Viewer'
-      if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights)
-      else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights)
+      const markup = { sketches: sketchShapes, measures: measureRecords, notes: textNotes }
+      if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights, markup)
+      else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights, markup)
       notify(kind === 'pdf' ? 'PDF paylasildi.' : 'Gorsel paylasildi.')
     } catch (exportError) {
       notify(exportError instanceof Error ? exportError.message : 'Disa aktarma basarisiz.')
@@ -1540,9 +1609,9 @@ function App() {
 
   const applyOpenResult = (result: Awaited<ReturnType<typeof buildOpenedFile>>) => {
     if (result.ok === false) {
-      setOpenedFile(null)
       setError(result.error)
-      setScreen('viewer')
+      setOpenStatus(result.error)
+      setOpenPanelOpen(true)
       return
     }
 
@@ -1643,6 +1712,66 @@ function App() {
   }, [])
 
   useEffect(() => {
+    window.__dwgOnBack = () => {
+      if (moving) {
+        moveHit.current = null
+        moveLast.current = null
+        setMoving(false)
+        return true
+      }
+      if (objectMenu) {
+        setObjectMenu(null)
+        return true
+      }
+      if (openPanelOpen) {
+        setOpenPanelOpen(false)
+        setFileBusy(false)
+        setOpenStatus('')
+        return true
+      }
+      if (upgradeOpen) {
+        setUpgradeOpen(false)
+        return true
+      }
+      if (menuOpen || layersPanelOpen || measurePanelOpen || settingsPanelOpen || commentsPanelOpen || colorPanelOpen || colorModalOpen || exportOpen || privacyOpen) {
+        setMenuOpen(false)
+        setLayersPanelOpen(false)
+        setMeasurePanelOpen(false)
+        setSettingsPanelOpen(false)
+        setCommentsPanelOpen(false)
+        setColorPanelOpen(false)
+        setColorModalOpen(false)
+        setExportOpen(false)
+        setPrivacyOpen(false)
+        setActiveCategory(null)
+        return true
+      }
+      if (pendingText) {
+        setPendingText(null)
+        return true
+      }
+      if (activeMeasureMode || drawModeOpen || activeEditTool || markupPlaceMode || zoomWindowMode) {
+        setActiveMeasureMode(null)
+        setDrawModeOpen(false)
+        setActiveEditTool(null)
+        setMarkupPlaceMode(null)
+        setZoomWindowMode(false)
+        setDraftPoints([])
+        setDraftSketchShape(null)
+        return true
+      }
+      if (screen === 'viewer') {
+        exitViewer()
+        return true
+      }
+      return false
+    }
+    return () => {
+      delete window.__dwgOnBack
+    }
+  })
+
+  useEffect(() => {
     if (new URLSearchParams(window.location.search).get('stress') !== '1') return
     window.__dwgViewer = {
       zoomIn: () => viewportRef.current?.zoomIn(),
@@ -1666,7 +1795,10 @@ function App() {
       await openFromFile(file, 'device', false, `Telefon dosyalari > ${file.name}`)
     } catch (pickError) {
       const message = pickError instanceof Error ? pickError.message : 'Dosya secilemedi'
-      if (!message.includes('secilmedi') && !message.includes('iptal')) setError(message)
+      if (message.includes('secilmedi') || message.includes('iptal')) {
+        setOpenStatus('Secim iptal edildi. Yeniden deneyebilirsiniz.')
+        setOpenPanelOpen(true)
+      } else setError(message)
     } finally {
       setFileBusy(false)
     }
@@ -1694,21 +1826,118 @@ function App() {
   const handleMeasurePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activeMeasureMode || !contentRef.current) return
     if (snapRafRef.current) return
+    setLoupe({ x: event.clientX, y: event.clientY })
     snapRafRef.current = window.requestAnimationFrame(() => {
       snapRafRef.current = null
       resolveMeasurePoint(event.clientX, event.clientY)
     })
   }
 
-  const resolveSketchPoint = (clientX: number, clientY: number) => {
-    if (!contentRef.current) return null
-    return screenToWorldPoint(clientX, clientY, contentRef.current, viewport, coordMode, dxfTransform)
+  const resolveSketchPoint = (clientX: number, clientY: number) => resolveMeasurePoint(clientX, clientY)
+
+  const openObjectMenu = (clientX: number, clientY: number) => {
+    const point = resolveSketchPoint(clientX, clientY)
+    const tolerance = contentRef.current
+      ? snapToleranceInCoords(viewport.scale, contentRef.current.clientHeight, VIEW_BOX.height, 36)
+      : 24
+    const hit = point ? nearestMarkup(point, tolerance, sketchShapes, measureRecords, textNotes) : null
+    setObjectMenu({ x: clientX, y: clientY, hit })
+    if (!hit) notify('Burada silinecek veya taşınacak nesne yok.')
+  }
+
+  const deleteMarkupHit = (hit: MarkupHit) => {
+    if (hit.kind === 'sketch') setSketchShapes((current) => current.filter((shape) => shape.id !== hit.id))
+    if (hit.kind === 'measure') setMeasureRecords((current) => current.filter((record) => record.id !== hit.id))
+    if (hit.kind === 'note') setTextNotes((current) => current.filter((note) => note.id !== hit.id))
+    setObjectMenu(null)
+    notify('Nesne silindi.')
+  }
+
+  const beginMove = (hit: MarkupHit) => {
+    moveHit.current = hit
+    moveLast.current = null
+    setMoving(true)
+    setObjectMenu(null)
+    setDrawModeOpen(false)
+    setActiveMeasureMode(null)
+    notify('Taşımak için nesneyi sürükleyin.')
   }
 
   const finalizeDrawShape = (shape: SketchShape) => {
     if (!canFinalizeDrawShape(shape.kind, shape.points)) return
-    setSketchShapes((current) => [...current, shape])
+    const stamped = { ...shape, strokeWidth: shape.strokeWidth ?? appSettings.markupStroke }
+    setSketchShapes((current) => [...current, stamped])
     setDraftSketchShape(null)
+    const callout = pendingCallout.current
+    if (callout && stamped.kind === 'arrow' && stamped.points[0]) {
+      pendingCallout.current = null
+      setTextNotes((current) => [
+        ...current,
+        {
+          id: `txt-${Date.now()}`,
+          point: stamped.points[0],
+          text: callout,
+          color: stamped.color,
+          height: appSettings.textHeight,
+        },
+      ])
+    }
+  }
+
+  const applyEditSnap = (raw: string) => {
+    const data = JSON.parse(raw) as {
+      sketchShapes?: SketchShape[]
+      measureRecords?: MeasureRecord[]
+      textNotes?: TextNote[]
+      numberMarkers?: NumberMarker[]
+      comments?: CommentRecord[]
+      unitsPerDrawingUnit?: number
+      unitLabel?: string
+    }
+    historyLock.current = true
+    setSketchShapes(data.sketchShapes ?? [])
+    setMeasureRecords(data.measureRecords ?? [])
+    setTextNotes(data.textNotes ?? [])
+    setNumberMarkers(data.numberMarkers ?? [])
+    setComments(data.comments ?? [])
+    if (typeof data.unitsPerDrawingUnit === 'number' && data.unitsPerDrawingUnit > 0) setUnitsPerDrawingUnit(data.unitsPerDrawingUnit)
+    if (data.unitLabel) setUnitLabel(data.unitLabel)
+    lastEditSnap.current = raw
+    window.setTimeout(() => {
+      historyLock.current = false
+    }, 0)
+  }
+
+  const undoEdit = () => {
+    if (draftSketchShape) {
+      setDraftSketchShape(null)
+      notify('Cizim taslagi silindi.')
+      return
+    }
+    if (draftPoints.length) {
+      setDraftPoints((current) => current.slice(0, -1))
+      notify('Son olcum noktasi geri alindi.')
+      return
+    }
+    const previous = pastEdits.current.pop()
+    if (!previous) {
+      notify('Geri alinacak islem yok.')
+      return
+    }
+    futureEdits.current.push(lastEditSnap.current)
+    applyEditSnap(previous)
+    notify('Geri alindi.')
+  }
+
+  const redoEdit = () => {
+    const next = futureEdits.current.pop()
+    if (!next) {
+      notify('Yinelenecek islem yok.')
+      return
+    }
+    pastEdits.current.push(lastEditSnap.current)
+    applyEditSnap(next)
+    notify('Yinelendi.')
   }
 
   const handleDrawPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1717,6 +1946,16 @@ function App() {
     if (!point) return
 
     event.stopPropagation()
+    setLoupe({ x: event.clientX, y: event.clientY })
+    const pressX = event.clientX
+    const pressY = event.clientY
+    window.clearTimeout(pressTimer.current ?? undefined)
+    pressMenu.current = false
+    pressTimer.current = window.setTimeout(() => {
+      pressMenu.current = true
+      setLoupe(null)
+      openObjectMenu(pressX, pressY)
+    }, 560)
 
     if (isTapDrawTool(activeDrawTool)) {
       if (activeDrawTool === 'polyline' && event.detail >= 2) {
@@ -1756,6 +1995,9 @@ function App() {
 
   const handleDrawPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!drawModeOpen || !draftSketchShape) return
+    window.clearTimeout(pressTimer.current ?? undefined)
+    pressTimer.current = null
+    setLoupe({ x: event.clientX, y: event.clientY })
     const point = resolveSketchPoint(event.clientX, event.clientY)
     if (!point) return
 
@@ -1780,6 +2022,13 @@ function App() {
   }
 
   const handleDrawPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    setLoupe(null)
+    window.clearTimeout(pressTimer.current ?? undefined)
+    pressTimer.current = null
+    if (pressMenu.current) {
+      pressMenu.current = false
+      return
+    }
     if (!drawModeOpen || !draftSketchShape) return
     if (isTapDrawTool(activeDrawTool)) return
 
@@ -1791,6 +2040,55 @@ function App() {
       if (current && canFinalizeDrawShape(current.kind, current.points)) finalizeDrawShape(current)
       return null
     })
+  }
+
+  const handleMovePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const point = resolveSketchPoint(event.clientX, event.clientY)
+    if (!point || !moveHit.current) return
+    event.stopPropagation()
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    moveLast.current = point
+    setLoupe({ x: event.clientX, y: event.clientY })
+  }
+
+  const handleMovePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const hit = moveHit.current
+    const last = moveLast.current
+    const point = resolveSketchPoint(event.clientX, event.clientY)
+    if (!hit || !last || !point) return
+    const dx = point.x - last.x
+    const dy = point.y - last.y
+    if (!dx && !dy) return
+    moveLast.current = point
+    setLoupe({ x: event.clientX, y: event.clientY })
+    event.preventDefault()
+    if (hit.kind === 'sketch') {
+      setSketchShapes((current) =>
+        current.map((shape) =>
+          shape.id === hit.id ? { ...shape, points: shape.points.map((item) => translatePoint(item, dx, dy)) } : shape,
+        ),
+      )
+    } else if (hit.kind === 'measure') {
+      setMeasureRecords((current) =>
+        current.map((record) =>
+          record.id === hit.id ? { ...record, points: record.points.map((item) => translatePoint(item, dx, dy)) } : record,
+        ),
+      )
+    } else {
+      setTextNotes((current) =>
+        current.map((note) => (note.id === hit.id ? { ...note, point: translatePoint(note.point, dx, dy) } : note)),
+      )
+    }
+  }
+
+  const handleMovePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    setLoupe(null)
+    moveHit.current = null
+    moveLast.current = null
+    setMoving(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    notify('Nesne taşındı.')
   }
 
   const handleEditPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1985,7 +2283,9 @@ function App() {
     try {
       const file = await loadCachedFile(entry.id)
       if (!file) {
-        setError('Dosya onbellekte yok. Lutfen yeniden secin.')
+        setOpenStatus('Dosya önbellekte yok. Yeniden seçebilirsiniz.')
+        setOpenPanelOpen(true)
+        setError('')
         return
       }
       await openFromFile(file, entry.source, true, `Son dosyalar > ${entry.name}`)
@@ -2034,14 +2334,11 @@ function App() {
       comments,
     }
 
+    downloadTextFile(`dwg-viewer-${Date.now()}.json`, JSON.stringify(payload, null, 2), 'application/json')
     if (kind === 'save' && measureRecords.length) {
       downloadTextFile(`olcumler-${Date.now()}.csv`, recordsToCsv(measureRecords), 'text/csv')
-      notify('Olcumler CSV olarak kaydedildi.')
-      return
     }
-
-    downloadTextFile(`dwg-viewer-${Date.now()}.json`, JSON.stringify(payload, null, 2), 'application/json')
-    notify(kind === 'save' ? 'Cizim durumu kaydedildi.' : 'Cizim bilgileri disa aktarildi.')
+    notify(kind === 'save' ? 'İşaretler bu çizime kaydedildi.' : 'Çizim bilgileri dışa aktarıldı.')
   }
 
   const printDrawing = () => {
@@ -2099,62 +2396,12 @@ function App() {
     }
 
     if (action === 'undo') {
-      if (draftSketchShape) {
-        setDraftSketchShape(null)
-        notify('Cizim taslagi silindi.')
-        return
-      }
-
-      if (sketchShapes.length) {
-        setSketchShapes((current) => current.slice(0, -1))
-        notify('Son cizim geri alindi.')
-        return
-      }
-
-      if (numberMarkers.length) {
-        setNumberMarkers((current) => current.slice(0, -1))
-        notify('Son numara geri alindi.')
-        return
-      }
-
-      if (mediaMarkers.length) {
-        setMediaMarkers((current) => current.slice(0, -1))
-        notify('Son isaret geri alindi.')
-        return
-      }
-
-      if (draftPoints.length) {
-        setDraftPoints((current) => current.slice(0, -1))
-        notify('Son olcum noktasi geri alindi.')
-        return
-      }
-
-      if (measureRecords.length) {
-        setMeasureRecords((current) => {
-          const removed = current.at(-1)
-          if (removed) setRedoMeasureRecords((redo) => [...redo, removed])
-          return current.slice(0, -1)
-        })
-        notify('Son olcum geri alindi.')
-        return
-      }
-
-      notify('Geri alinacak islem yok.')
+      undoEdit()
       return
     }
 
     if (action === 'redo') {
-      if (!redoMeasureRecords.length) {
-        notify('Yinelenecek islem yok.')
-        return
-      }
-
-      setRedoMeasureRecords((current) => {
-        const restored = current.at(-1)
-        if (restored) setMeasureRecords((records) => [...records, restored])
-        return current.slice(0, -1)
-      })
-      notify('Olcum yeniden eklendi.')
+      redoEdit()
     }
   }
 
@@ -2320,7 +2567,9 @@ function App() {
               busy={fileBusy}
               statusMessage={openStatus || undefined}
               onClose={() => {
-                if (!fileBusy) setOpenPanelOpen(false)
+                setOpenPanelOpen(false)
+                setFileBusy(false)
+                setOpenStatus('')
               }}
               onPickDevice={handlePickDevice}
               onPickCloud={handlePickCloud}
@@ -2361,7 +2610,8 @@ function App() {
           <DrawingViewport
             resetKey={viewportResetKey}
             actionsRef={viewportRef}
-            panLocked={!!activeMeasureMode || drawModeOpen || !!activeEditTool || !!markupPlaceMode}
+            panLocked={!!activeMeasureMode || drawModeOpen || !!activeEditTool || !!markupPlaceMode || moving}
+            onIdlePress={openObjectMenu}
             onViewportChange={setViewport}
           >
             {(camera) => {
@@ -2482,12 +2732,50 @@ function App() {
                   <span className="draw-hint">{DRAW_LABELS[activeDrawTool]}</span>
                 </div>
               )}
+              {moving && (
+                <div
+                  className="draw-capture"
+                  onPointerDown={handleMovePointerDown}
+                  onPointerMove={handleMovePointerMove}
+                  onPointerUp={handleMovePointerEnd}
+                  onPointerCancel={handleMovePointerEnd}
+                >
+                  <span className="draw-hint">Taşı</span>
+                </div>
+              )}
             </div>
               )
             }}
           </DrawingViewport>
 
-          {error && <div className="file-error">{error}</div>}
+          {error && (
+            <div className="file-error">
+              <span>{error}</span>
+              <button type="button" aria-label="Hatayı kapat" onClick={() => setError('')}>
+                Kapat
+              </button>
+            </div>
+          )}
+          <TouchLoupe x={loupe?.x ?? 0} y={loupe?.y ?? 0} visible={Boolean(loupe)} />
+          {objectMenu && (
+            <div className="object-menu" style={{ left: objectMenu.x, top: objectMenu.y }} role="menu" aria-label="Nesne menüsü">
+              {objectMenu.hit ? (
+                <>
+                  <button type="button" onClick={() => deleteMarkupHit(objectMenu.hit!)}>
+                    Sil
+                  </button>
+                  <button type="button" onClick={() => beginMove(objectMenu.hit!)}>
+                    Taşı
+                  </button>
+                </>
+              ) : (
+                <p className="object-menu-empty">Nesne yok</p>
+              )}
+              <button type="button" onClick={() => setObjectMenu(null)}>
+                Kapat
+              </button>
+            </div>
+          )}
 
           {measurePanelOpen && (
             <MeasureResultsPanel
@@ -2517,6 +2805,7 @@ function App() {
               layers={layerList}
               hiddenLayers={hiddenLayers}
               entityCounts={entityCounts}
+              layerColors={layerColors}
               onToggle={toggleLayer}
               onShowAll={showAllLayers}
               onHideAll={hideAllLayers}
@@ -2655,7 +2944,9 @@ function App() {
           busy={fileBusy}
           statusMessage={openStatus || undefined}
           onClose={() => {
-            if (!fileBusy) setOpenPanelOpen(false)
+            setOpenPanelOpen(false)
+            setFileBusy(false)
+            setOpenStatus('')
           }}
           onPickDevice={handlePickDevice}
           onPickCloud={handlePickCloud}

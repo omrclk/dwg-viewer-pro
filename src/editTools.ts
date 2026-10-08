@@ -4,19 +4,19 @@ import { distance, type Point2 } from './measureMath'
 export type EditTool = 'trim' | 'extend' | 'offset' | 'fillet' | 'chamfer'
 
 export const EDIT_LABELS: Record<EditTool, string> = {
-  trim: 'Kirp',
+  trim: 'Kırp',
   extend: 'Uzat',
-  offset: 'Offset',
-  fillet: 'Fileto',
-  chamfer: 'Oluk',
+  offset: 'Ötele',
+  fillet: 'Yuvarla',
+  chamfer: 'Pah',
 }
 
 export const EDIT_HINTS: Record<EditTool, string> = {
-  trim: 'Kirp: silmek icin cizime dokun',
-  extend: 'Uzat: cizgi sec, sonra hedef noktaya dokun',
-  offset: 'Offset: sekli sec, sonra mesafe icin dokun',
-  fillet: 'Fileto: dikdortgene dokun, yaricap icin surukle',
-  chamfer: 'Oluk: dikdortgene dokun, oluk icin surukle',
+  trim: 'Kırp: silmek için çizime dokunun',
+  extend: 'Uzat: çizgi seçin, sonra hedef noktaya dokunun',
+  offset: 'Ötele: şekli seçin, sonra yön için dokunun',
+  fillet: 'Yuvarla: dikdörtgene dokunun',
+  chamfer: 'Pah: dikdörtgene dokunun',
 }
 
 export function actionIdToEditTool(actionId: string): EditTool | null {
@@ -30,7 +30,7 @@ export function actionIdToEditTool(actionId: string): EditTool | null {
   return map[actionId] ?? null
 }
 
-function shapeDistance(shape: SketchShape, point: Point2) {
+export function distanceToSketch(shape: SketchShape, point: Point2) {
   if (shape.kind === 'line' && shape.points.length >= 2) {
     return pointToSegmentDistance(point, shape.points[0], shape.points[1])
   }
@@ -60,7 +60,7 @@ export function findNearestSketchShape(shapes: SketchShape[], point: Point2, tol
   let best: SketchShape | null = null
   let bestDistance = tolerance
   shapes.forEach((shape) => {
-    const dist = shapeDistance(shape, point)
+    const dist = distanceToSketch(shape, point)
     if (dist < bestDistance) {
       bestDistance = dist
       best = shape

@@ -15,6 +15,8 @@ Ortak nesneler: çizgi, polyline / lwpolyline (bulge ve sabit genişlik dahil), 
 
 Çizgiler varsayılan olarak bir cihaz pikseli kalınlığındadır (saç teli). Ayarlardaki **Çizgi kalınlıklarını göster** açılınca gerçek çizgi kalınlığı yakınlaştırmayla ölçeklenir. Kaydırma ve sıkıştırma sırasında görüntü yalnızca hareket boyunca kayar; parmak kalkınca çizim o ölçekte yeniden çizilir.
 
+Dosya seçici iptal edilirse, dosya bozuksa veya aynı dosya yeniden seçilirse **Dosya aç** kapanmaz ve tekrar kullanılabilir. Çizgiler, notlar, ölçüler ve katman görünürlüğü çizim adına göre cihazda saklanır; dosya yeniden açılınca geri gelir. PDF ve görsel dışa aktarma bu işaretleri de çizer. Android geri tuşu önce paneli veya aracı kapatır, çizim ekranından ana sayfaya döner, ancak o zaman uygulamadan çıkar.
+
 WhatsApp veya BiP’te bir DWG/DXF’e dokununca DWG Viewer Pro, Birlikte aç listesinde görünür. Her zaman seçilirse aynı tür dosyalar doğrudan açılır. Dosya `application/octet-stream` gelse bile başlıktaki `AC10` imzasından DWG olduğu anlaşılır ve görünen ad `OpenableColumns` ile okunur. İzin kaybolmadan içerik önbelleğe kopyalanır. Uygulama `singleTask` olduğu için ikinci dokunuş yeni bir pencere yığmaz.
 
 ## Ücretsiz ve Pro

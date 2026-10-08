@@ -66,7 +66,7 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onToggleFa
             [
               ['recent', 'Son'],
               ['favorite', 'Favori'],
-              ['drawings', 'Ornekler'],
+              ['drawings', 'Örnekler'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -96,21 +96,21 @@ export function FastViewHome({ recentFiles, onOpenFile, onOpenRecent, onToggleFa
             <button type="button" className="fv-home-file" onClick={() => onOpenSample('dwg')}>
               <div className="fv-home-thumb"><DemoThumb /></div>
               <div>
-                <div className="fv-home-file-name">Ornek plan.dwg</div>
+                <div className="fv-home-file-name">Örnek plan.dwg</div>
                 <div className="fv-home-file-meta">Katman, blok, tarama, yazi ve olcu</div>
               </div>
             </button>
             <button type="button" className="fv-home-file" onClick={() => onOpenSample('dxf')}>
               <div className="fv-home-thumb"><DemoThumb /></div>
               <div>
-                <div className="fv-home-file-name">Ornek plan.dxf</div>
+                <div className="fv-home-file-name">Örnek plan.dxf</div>
                 <div className="fv-home-file-meta">Ayni planin DXF kopyasi</div>
               </div>
             </button>
             <button type="button" className="fv-home-file" onClick={onEnterViewer}>
               <div className="fv-home-thumb"><DemoThumb /></div>
               <div>
-                <div className="fv-home-file-name">Bos goruntuleyici</div>
+                <div className="fv-home-file-name">Boş görüntüleyici</div>
                 <div className="fv-home-file-meta">Araclari dosya acmadan deneyin</div>
               </div>
             </button>

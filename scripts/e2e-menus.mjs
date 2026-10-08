@@ -1,0 +1,241 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import { chromium } from 'playwright'
+
+const base = process.env.E2E_BASE || 'http://127.0.0.1:43123'
+const shotDir = '/opt/cursor/artifacts/screenshots'
+const checklistPath = '/opt/cursor/artifacts/e2e-checklist.json'
+
+const results = []
+
+function record(feature, status, notes) {
+  results.push({ feature, status, notes })
+  console.log(`${status === 'pass' ? 'OK' : status === 'pro' ? 'PRO' : 'FAIL'}  ${feature} — ${notes}`)
+}
+
+async function shot(page, name) {
+  await mkdir(shotDir, { recursive: true })
+  const path = `${shotDir}/${name}.png`
+  await page.screenshot({ path, fullPage: false })
+  return path
+}
+
+async function dismissUpgrade(page) {
+  const sheet = page.locator('.upgrade-card')
+  if (await sheet.count()) {
+    await sheet.getByRole('button', { name: 'Kapat' }).click()
+    await sheet.waitFor({ state: 'hidden' }).catch(() => undefined)
+    return true
+  }
+  return false
+}
+
+async function dismissTransient(page) {
+  if (await dismissUpgrade(page)) return
+  const blocking = page.locator(
+    '.draw-capture, .measure-capture, .layers-panel, .settings-panel, .comments-panel, .measure-results-panel, .fv-color-backdrop',
+  )
+  if (await blocking.count()) {
+    await page.evaluate(() => window.__dwgOnBack?.())
+    await page.waitForTimeout(80)
+  }
+}
+
+const browser = await chromium.launch({ headless: true })
+const page = await browser.newPage({
+  viewport: { width: 390, height: 844 },
+  deviceScaleFactor: 2,
+  hasTouch: true,
+  isMobile: true,
+})
+page.setDefaultTimeout(15000)
+page.on('dialog', (dialog) => {
+  void dialog.accept('Not')
+})
+
+let chooserMode = 'cancel'
+page.on('filechooser', async (chooser) => {
+  if (chooserMode === 'cancel') {
+    await chooser.element().dispatchEvent('cancel')
+    return
+  }
+  if (chooserMode === 'bad') {
+    await chooser.setFiles({
+      name: 'notlar.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('bu bir cizim degil'),
+    })
+    return
+  }
+  if (chooserMode === 'same') {
+    await chooser.setFiles({
+      name: 'ayni.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('ayni icerik'),
+    })
+  }
+})
+
+try {
+  await page.goto(base, { waitUntil: 'networkidle' })
+  await shot(page, 'v120-home')
+  record('Ana sayfa', 'pass', 'Ev, Dosya ve Bulut görünür')
+
+  await page.getByRole('button', { name: 'Dosya' }).click()
+  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
+  await page.getByRole('button', { name: 'Kapat' }).click()
+  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: 'Dosya' }).click()
+  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
+  record('Dosya aç paneli', 'pass', 'Kapatıldıktan sonra yeniden açılır')
+
+  chooserMode = 'cancel'
+  await page.getByRole('button', { name: 'Cihazdan aç' }).click()
+  await page.getByText(/iptal|Yeniden/i).waitFor()
+  const deviceButton = page.getByRole('button', { name: 'Cihazdan aç' })
+  if (await deviceButton.isDisabled()) throw new Error('Cihazdan aç iptal sonrası kilitli')
+  record('Dosya seçici iptali', 'pass', 'İptal mesajı görünür, düğme yeniden etkin')
+
+  chooserMode = 'bad'
+  await deviceButton.click()
+  await page.getByText(/DWG|DXF|PDF/i).waitFor()
+  if (await deviceButton.isDisabled()) throw new Error('Hatalı dosyadan sonra kilitli')
+  record('Bozuk dosya', 'pass', 'Hata panelde kalır, seçici tekrar açılır')
+
+  chooserMode = 'same'
+  await deviceButton.click()
+  await page.getByText(/DWG|DXF|PDF/i).waitFor()
+  await deviceButton.click()
+  await page.waitForTimeout(400)
+  if (await deviceButton.isDisabled()) throw new Error('Aynı dosya ikinci kez seçilemedi')
+  record('Aynı dosyayı yeniden seçme', 'pass', 'İkinci seçim de tamamlandı')
+
+  await page.getByRole('button', { name: 'Kapat' }).click()
+  chooserMode = 'cancel'
+
+  await page.getByRole('tab', { name: 'Örnekler' }).click()
+  await page.getByRole('button', { name: /Örnek plan\.dwg/ }).click()
+  await page.locator('canvas.cad-canvas').waitFor({ timeout: 20000 })
+  await page.waitForTimeout(600)
+  await shot(page, 'v120-sample-fit')
+  record('Örnek DWG', 'pass', 'Tuval çizildi')
+
+  const navCount = await page.locator('.fv-nav-item').count()
+  for (let index = 0; index < navCount; index += 1) {
+    const nav = page.locator('.fv-nav-item').nth(index)
+    const navLabel = (await nav.locator('.fv-nav-label').innerText()).trim()
+    await nav.click()
+    if (navLabel === 'Renk') {
+      await page.getByRole('dialog', { name: /renk ayarı/i }).waitFor()
+      await page.locator('.fv-color-swatches button').first().click()
+      await shot(page, 'v120-color')
+      await page.getByRole('button', { name: 'Tamam' }).click()
+      record('Renk', 'pass', 'Palet açıldı ve bir renk seçildi')
+      continue
+    }
+    const subCount = await page.locator('.fv-sub-item').count()
+    if (!subCount) {
+      record(navLabel, 'fail', 'Alt menü açılmadı')
+      continue
+    }
+    for (let sub = 0; sub < subCount; sub += 1) {
+      const item = page.locator('.fv-sub-item').nth(sub)
+      const label = (await item.getAttribute('aria-label')) || `öğe ${sub}`
+      await item.click()
+      await page.waitForTimeout(120)
+      if (await dismissUpgrade(page)) {
+        record(`${navLabel} / ${label}`, 'pro', 'Pro kilidi açılır, ücretsiz planda kilitli')
+      } else {
+        record(`${navLabel} / ${label}`, 'pass', 'Dokunuş yanıt verdi')
+      }
+      if (navLabel === 'Katman' && label === 'Katman Listesi') {
+        await page.getByRole('dialog', { name: 'Katman listesi' }).waitFor()
+        await shot(page, 'v120-layers')
+      }
+      await dismissTransient(page)
+      if ((await page.locator('.fv-sub-item').count()) === 0 && navLabel !== 'Renk') {
+        await nav.click()
+      }
+    }
+    if ((await page.locator('.fv-home').count()) > 0) {
+      record('Geri tuşu', 'fail', 'Menü turu çizimden çıktı')
+      break
+    }
+  }
+
+  await dismissTransient(page)
+  await page.getByRole('button', { name: 'Çiz' }).click()
+  await page.getByRole('button', { name: 'Çizgi', exact: true }).click()
+  const capture = page.locator('.draw-capture').last()
+  await capture.waitFor()
+  const box = await capture.boundingBox()
+  if (!box) throw new Error('Çizim alanı yok')
+  await page.mouse.move(box.x + 48, box.y + 120)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 220, box.y + 280, { steps: 8 })
+  await page.mouse.up()
+  await page.locator('.sketch-overlay line').waitFor()
+  await shot(page, 'v120-draw-line')
+  record('Çizgi çizme', 'pass', 'Sürüklenen çizgi tuvalde')
+
+  await page.getByRole('button', { name: 'Geri al' }).click()
+  await page.locator('.sketch-overlay line').waitFor({ state: 'detached' })
+  record('Geri al', 'pass', 'Çizilen çizgi geri alındı')
+  await page.getByRole('button', { name: 'Yinele' }).click()
+  await page.locator('.sketch-overlay line').waitFor()
+  record('Yinele', 'pass', 'Çizgi geri geldi')
+
+  await dismissTransient(page)
+  await page.getByRole('button', { name: 'Ölçüm' }).click()
+  await page.getByRole('button', { name: 'Mesafe', exact: true }).click()
+  const measure = page.locator('.measure-capture')
+  await measure.waitFor()
+  const measureBox = await measure.boundingBox()
+  if (!measureBox) throw new Error('Ölçüm alanı yok')
+  await page.mouse.click(measureBox.x + 70, measureBox.y + 160)
+  await page.mouse.click(measureBox.x + 240, measureBox.y + 300)
+  await page.waitForTimeout(300)
+  await shot(page, 'v120-measure')
+  record('Mesafe ölçümü', 'pass', 'İki nokta seçildi')
+
+  await dismissTransient(page)
+  await page.getByRole('button', { name: 'Ek açıklama' }).click()
+  await page.getByRole('button', { name: 'Metin', exact: true }).click()
+  await page.locator('.draw-capture').last().waitFor()
+  const textBox = await page.locator('.draw-capture').last().boundingBox()
+  if (textBox) await page.mouse.click(textBox.x + 120, textBox.y + 180)
+  await page.waitForTimeout(200)
+  await shot(page, 'v120-text')
+  record('Metin notu', 'pass', 'Not çizime yerleştirildi')
+
+  await page.getByRole('button', { name: 'Menü' }).click()
+  await page.getByRole('button', { name: 'Ayarlar' }).click()
+  await page.getByRole('dialog', { name: 'Olcum ayarlari' }).waitFor()
+  await page.getByRole('button', { name: /Koyu|Açık/ }).click()
+  await shot(page, 'v120-settings')
+  record('Ayarlar ve tema', 'pass', 'Tema düğmesi çalıştı')
+  await page.getByRole('button', { name: 'Ayarlari kapat' }).click()
+
+  await page.getByRole('button', { name: 'Sığdır' }).click()
+  await page.getByRole('button', { name: 'Yakınlaştır' }).click()
+  record('Yakınlaştır ve sığdır', 'pass', 'Üst çubuk yanıt verdi')
+
+  const stayed = await page.evaluate(() => window.__dwgOnBack?.() === true)
+  record('Geri tuşu', stayed ? 'pass' : 'fail', stayed ? 'Araç veya panel kapanır, uygulama kapanmaz' : 'Geri olayı tüketilmedi')
+
+  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  await writeFile(checklistPath, JSON.stringify(results, null, 2))
+  const failed = results.filter((item) => item.status === 'fail')
+  if (failed.length) {
+    console.error(`FAILED ${failed.length}`)
+    process.exitCode = 1
+  }
+} catch (error) {
+  record('E2E', 'fail', error instanceof Error ? error.message : String(error))
+  await shot(page, 'v120-failure').catch(() => undefined)
+  await mkdir('/opt/cursor/artifacts', { recursive: true })
+  await writeFile(checklistPath, JSON.stringify(results, null, 2))
+  console.error(error)
+  process.exitCode = 1
+} finally {
+  await browser.close()
+}

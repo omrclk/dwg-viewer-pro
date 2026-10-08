@@ -17,6 +17,7 @@ import android.util.Base64;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -44,6 +45,29 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView webView = bridge != null ? bridge.getWebView() : null;
+                if (webView == null) {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                    setEnabled(true);
+                    return;
+                }
+                webView.evaluateJavascript(
+                        "(function(){try{return window.__dwgOnBack?!!window.__dwgOnBack():false}catch(e){return false}})()",
+                        value -> {
+                            if (!"true".equals(value)) {
+                                runOnUiThread(() -> {
+                                    setEnabled(false);
+                                    getOnBackPressedDispatcher().onBackPressed();
+                                    setEnabled(true);
+                                });
+                            }
+                        });
+            }
+        });
         handleIncomingFileIntent(getIntent());
     }
 

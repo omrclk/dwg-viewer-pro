@@ -38,7 +38,6 @@ const EXPLICIT_ACTIONS = new Set([
   'ann-video',
   'ann-image',
   'draw-smartpen',
-  'draw-divide',
 ])
 
 function isCovered(actionId: string) {

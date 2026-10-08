@@ -41,7 +41,7 @@ export function SettingsPanel({
           type="button"
           onClick={() => onChange({ ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' })}
         >
-          {settings.theme === 'dark' ? 'Koyu' : 'Acik'}
+          {settings.theme === 'dark' ? 'Koyu' : 'Açık'}
         </button>
       </label>
       <label className="settings-row">
@@ -61,6 +61,17 @@ export function SettingsPanel({
           type="checkbox"
           checked={settings.snap.enabled}
           onChange={(event) => onChange({ ...settings, snap: { ...settings.snap, enabled: event.target.checked } })}
+        />
+      </label>
+      <label className="settings-row">
+        <span>İşaret kalınlığı</span>
+        <input
+          type="number"
+          min={1}
+          max={12}
+          step={1}
+          value={settings.markupStroke}
+          onChange={(event) => onChange({ ...settings, markupStroke: Number(event.target.value) || settings.markupStroke })}
         />
       </label>
       <label className="settings-row">

@@ -35,10 +35,10 @@ export function OpenFilesPanel({
   }, [])
 
   return (
-    <div className="open-files-panel" role="dialog" aria-label="Dosya ac">
+    <div className="open-files-panel" role="dialog" aria-label="Dosya aç">
       <div className="open-files-header">
-        <strong>Dosya Ac</strong>
-        <button type="button" className="open-files-close" aria-label="Kapat" onClick={onClose} disabled={busy}>
+        <strong>Dosya aç</strong>
+        <button type="button" className="open-files-close" aria-label="Kapat" onClick={onClose}>
           x
         </button>
       </div>
@@ -50,8 +50,8 @@ export function OpenFilesPanel({
         <button type="button" className="open-source-btn device" onClick={onPickDevice} disabled={busy}>
           <Smartphone size={16} />
           <span>
-            <strong>Cihazdan ac</strong>
-            <small>Depolama, indirilenler veya dosya yoneticisi</small>
+            <strong>Cihazdan aç</strong>
+            <small>Depolama, indirilenler veya dosya yöneticisi</small>
           </span>
         </button>
       </section>

@@ -12,6 +12,7 @@
     "android:open": "npx cap open android",
     "android:run": "pnpm run android:sync && cd android && gradlew.bat installDebug && adb shell am start -n com.dwgviewer.pro/.MainActivity",
     "test": "vitest run",
+    "e2e": "node scripts/e2e-menus.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "preview": "vite preview",

@@ -19,6 +19,7 @@ export type SketchShape = {
   points: Point2[]
   cornerRadius?: number
   chamferSize?: number
+  strokeWidth?: number
 }
 
 const ACTION_TOOL_MAP: Record<string, DrawTool> = {
@@ -41,27 +42,27 @@ const ACTION_TOOL_MAP: Record<string, DrawTool> = {
 }
 
 export const DRAW_LABELS: Record<DrawTool, string> = {
-  sketch: 'Eskiz',
-  polyline: 'Polyline',
-  line: 'Cizgi',
+  sketch: 'Serbest çiz',
+  polyline: 'Çoklu çizgi',
+  line: 'Çizgi',
   circle: 'Daire',
-  rect: 'Dikdortgen',
+  rect: 'Dikdörtgen',
   ellipse: 'Elips',
   arc: 'Yay',
   arrow: 'Ok',
-  revcloud: 'Revcloud',
+  revcloud: 'Revizyon bulutu',
 }
 
 export const DRAW_HINTS: Record<DrawTool, string> = {
-  sketch: 'Eskiz: parmaginla serbest ciz',
-  polyline: 'Polyline: nokta sec, bitirmek icin cift dokun',
-  line: 'Cizgi: baslangic ve bitis noktasina surukle',
-  circle: 'Daire: merkezden disa surukle',
-  rect: 'Dikdortgen: bir koseden karsi koseye surukle',
-  ellipse: 'Elips: sinirlayici kutuya surukle',
-  arc: 'Yay: merkez, baslangic ve bitis noktasi sec',
-  arrow: 'Ok: baslangic ve hedefe surukle',
-  revcloud: 'Revcloud: sinir boyunca surukle',
+  sketch: 'Serbest çiz: parmağınızla çizin',
+  polyline: 'Çoklu çizgi: nokta seçin, bitirmek için çift dokunun',
+  line: 'Çizgi: başlangıçtan bitişe sürükleyin',
+  circle: 'Daire: merkezden dışa sürükleyin',
+  rect: 'Dikdörtgen: bir köşeden karşı köşeye sürükleyin',
+  ellipse: 'Elips: sınır kutusuna sürükleyin',
+  arc: 'Yay: merkez, başlangıç ve bitiş noktasına dokunun',
+  arrow: 'Ok: başlangıçtan hedefe sürükleyin',
+  revcloud: 'Revizyon bulutu: sınır boyunca sürükleyin',
 }
 
 export function actionIdToDrawTool(actionId: string): DrawTool | null {

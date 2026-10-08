@@ -1,6 +1,10 @@
 import { Capacitor } from '@capacitor/core'
 import type { DrawingEntity } from './drawingTypes'
+import { worldToViewBox, type DxfTransform } from './dxfTransform'
 import { renderScene, type SceneTheme } from './cad/renderScene'
+import type { SketchShape } from './drawTools'
+import type { MeasureRecord } from './measureMath'
+import type { TextNote } from './markupTools'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -11,12 +15,62 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+export type ExportMarkup = {
+  sketches?: SketchShape[]
+  measures?: MeasureRecord[]
+  notes?: TextNote[]
+}
+
+function paintMarkup(ctx: CanvasRenderingContext2D, transform: DxfTransform, markup: ExportMarkup) {
+  const map = (point: { x: number; y: number }) => worldToViewBox(point, transform)
+  ctx.save()
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  ;(markup.sketches ?? []).forEach((shape) => {
+    if (shape.points.length < 2) return
+    const points = shape.points.map(map)
+    ctx.beginPath()
+    ctx.strokeStyle = shape.color
+    ctx.lineWidth = shape.strokeWidth && shape.strokeWidth > 0 ? shape.strokeWidth : 2
+    ctx.moveTo(points[0].x, points[0].y)
+    if (shape.kind === 'circle') {
+      const radius = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y)
+      ctx.arc(points[0].x, points[0].y, radius, 0, Math.PI * 2)
+    } else {
+      points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y))
+    }
+    ctx.stroke()
+  })
+  ;(markup.measures ?? []).forEach((record) => {
+    const points = record.points.map(map)
+    if (points.length < 1) return
+    ctx.beginPath()
+    ctx.strokeStyle = '#18f4ea'
+    ctx.lineWidth = 2
+    ctx.moveTo(points[0].x, points[0].y)
+    points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y))
+    ctx.stroke()
+    const anchor = points[points.length - 1]
+    ctx.fillStyle = '#18f4ea'
+    ctx.font = '16px sans-serif'
+    ctx.fillText(record.displayValue, anchor.x + 6, anchor.y - 6)
+  })
+  ;(markup.notes ?? []).forEach((note) => {
+    const point = map(note.point)
+    ctx.fillStyle = note.color
+    ctx.font = `${Math.max(14, note.height * 4)}px sans-serif`
+    ctx.fillText(note.text, point.x, point.y)
+  })
+  ctx.restore()
+}
+
 export async function renderDrawingBlob(
   entities: DrawingEntity[],
   hiddenLayers: Set<string>,
   theme: SceneTheme,
   watermark: string | null,
   showLineweights = false,
+  markup?: ExportMarkup,
 ) {
   const viewWidth = 1600
   const viewHeight = 1100
@@ -26,7 +80,7 @@ export async function renderDrawingBlob(
   const ctx = canvas.getContext('2d', { alpha: false })
   if (!ctx) throw new Error('Canvas olusturulamadi.')
   ctx.imageSmoothingEnabled = false
-  renderScene(ctx, {
+  const transform = renderScene(ctx, {
     entities,
     hiddenLayers,
     width: viewWidth,
@@ -37,6 +91,7 @@ export async function renderDrawingBlob(
     showLineweights,
     dpr: 1,
   })
+  if (markup) paintMarkup(ctx, transform, markup)
   if (watermark) {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.font = '600 28px sans-serif'
@@ -116,8 +171,9 @@ export async function exportDrawingPng(
   filename: string,
   watermark: string | null,
   showLineweights = false,
+  markup?: ExportMarkup,
 ) {
-  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights)
+  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights, markup)
   await shareOrDownload(blob, filename.replace(/\.\w+$/, '') + '.jpg', 'image/jpeg')
 }
 
@@ -128,8 +184,9 @@ export async function exportDrawingPdf(
   filename: string,
   watermark: string | null,
   showLineweights = false,
+  markup?: ExportMarkup,
 ) {
-  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights)
+  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights, markup)
   const jpeg = new Uint8Array(await blob.arrayBuffer())
   const pdf = jpegPdf(jpeg, 1600, 1100)
   await shareOrDownload(new Blob([pdf], { type: 'application/pdf' }), filename.replace(/\.\w+$/, '') + '.pdf', 'application/pdf')

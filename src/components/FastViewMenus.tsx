@@ -30,10 +30,10 @@ export function FastViewTopBar({
     { id: 'save', label: 'Kaydet', node: <FvTopSave size={20} /> },
     { id: 'undo', label: 'Geri al', node: <Undo2 size={20} strokeWidth={2} /> },
     { id: 'redo', label: 'Yinele', node: <Redo2 size={20} strokeWidth={2} /> },
-    { id: 'layout', label: 'Gorunum', node: <FvTopLayout size={20} /> },
-    { id: 'zoomWindow', label: 'Yakinlastir', node: <FvTopZoomWindow size={20} /> },
-    { id: 'fit', label: 'Sigdir', node: <FvTopFit size={20} /> },
-    { id: 'menu', label: 'Menu', node: <EllipsisVertical size={20} strokeWidth={2.2} /> },
+    { id: 'layout', label: 'Görünüm', node: <FvTopLayout size={20} /> },
+    { id: 'zoomWindow', label: 'Yakınlaştır', node: <FvTopZoomWindow size={20} /> },
+    { id: 'fit', label: 'Sığdır', node: <FvTopFit size={20} /> },
+    { id: 'menu', label: 'Menü', node: <EllipsisVertical size={20} strokeWidth={2.2} /> },
   ]
 
   return (
@@ -121,6 +121,7 @@ export function FastViewBottomStack({
                 type="button"
                 className={`fv-sub-item${activeActionId === id ? ' active' : ''}`}
                 aria-pressed={activeActionId === id}
+                aria-label={label}
                 onClick={() => onSubAction(id)}
               >
                 <span className="fv-sub-icon">
@@ -173,7 +174,7 @@ export function FastViewColorModal({
   return (
     <div className="fv-color-backdrop" role="presentation" onClick={onClose}>
       <div className="fv-color-modal" role="dialog" aria-label="renk ayarı" onClick={(event) => event.stopPropagation()}>
-        <h2 className="fv-color-title">renk ayarı</h2>
+        <h2 className="fv-color-title">Renk ayarı</h2>
         <div className="fv-color-swatches">
           {ACI_COLORS.map((swatch) => (
             <button

@@ -19,6 +19,7 @@ function toView(point: Point2, coordMode: 'demo' | 'dxf', transform?: DxfTransfo
 function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform?: DxfTransform) {
   const pts = shape.points.map((point) => toView(point, coordMode, dxfTransform))
   const stroke = shape.color
+  const width = shape.strokeWidth && shape.strokeWidth > 0 ? shape.strokeWidth : 2
   const key = shape.id
 
   if (shape.kind === 'line' && pts.length >= 2) {
@@ -30,14 +31,14 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
         y1={pts[0].y}
         x2={pts[1].x}
         y2={pts[1].y}
-        stroke={stroke}
+        stroke={stroke} strokeWidth={width}
       />
     )
   }
 
   if (shape.kind === 'circle' && pts.length >= 2) {
     const radius = distance(pts[0], pts[1])
-    return <circle key={key} className="sketch-line" cx={pts[0].x} cy={pts[0].y} r={radius} stroke={stroke} fill="none" />
+    return <circle key={key} className="sketch-line" cx={pts[0].x} cy={pts[0].y} r={radius} stroke={stroke} strokeWidth={width} fill="none" />
   }
 
   if (shape.kind === 'rect' && pts.length >= 2) {
@@ -49,7 +50,7 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
       const w = box.width
       const h = box.height
       const points = `${x + c},${y} ${x + w - c},${y} ${x + w},${y + c} ${x + w},${y + h - c} ${x + w - c},${y + h} ${x + c},${y + h} ${x},${y + h - c} ${x},${y + c}`
-      return <polygon key={key} className="sketch-line" points={points} stroke={stroke} fill="none" />
+      return <polygon key={key} className="sketch-line" points={points} stroke={stroke} strokeWidth={width} fill="none" />
     }
     return (
       <rect
@@ -61,7 +62,7 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
         height={box.height}
         rx={shape.cornerRadius ?? 0}
         ry={shape.cornerRadius ?? 0}
-        stroke={stroke}
+        stroke={stroke} strokeWidth={width}
         fill="none"
       />
     )
@@ -77,7 +78,7 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
         cy={box.y + box.height / 2}
         rx={box.width / 2}
         ry={box.height / 2}
-        stroke={stroke}
+        stroke={stroke} strokeWidth={width}
         fill="none"
       />
     )
@@ -86,14 +87,14 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
   if (shape.kind === 'arrow' && pts.length >= 2) {
     return (
       <g key={key}>
-        <line className="sketch-line" x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y} stroke={stroke} />
-        <polygon className="sketch-line sketch-fill" points={arrowHeadPoints(pts[0], pts[1])} fill={stroke} stroke={stroke} />
+        <line className="sketch-line" x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y} stroke={stroke} strokeWidth={width} />
+        <polygon className="sketch-line sketch-fill" points={arrowHeadPoints(pts[0], pts[1])} fill={stroke} stroke={stroke} strokeWidth={width} />
       </g>
     )
   }
 
   if (shape.kind === 'arc' && pts.length >= 3) {
-    return <path key={key} className="sketch-line" d={arcPathFromThreePoints(pts[0], pts[1], pts[2])} stroke={stroke} fill="none" />
+    return <path key={key} className="sketch-line" d={arcPathFromThreePoints(pts[0], pts[1], pts[2])} stroke={stroke} strokeWidth={width} fill="none" />
   }
 
   if ((shape.kind === 'polyline' || shape.kind === 'sketch' || shape.kind === 'revcloud') && pts.length >= 2) {
@@ -103,7 +104,7 @@ function renderShape(shape: SketchShape, coordMode: 'demo' | 'dxf', dxfTransform
         key={key}
         className={shape.kind === 'revcloud' ? 'sketch-line sketch-revcloud' : 'sketch-line'}
         points={points}
-        stroke={stroke}
+        stroke={stroke} strokeWidth={width}
         fill="none"
       />
     )

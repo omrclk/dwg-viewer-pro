@@ -18,6 +18,8 @@ export type AppSettings = {
   theme: AppTheme
   measureDecimals: number
   textHeight: number
+  /** Screen pixels for lines, notes and measurements the user draws. */
+  markupStroke: number
   /** When off, every stroke is a 1-device-pixel hairline. */
   showLineweights: boolean
 }
@@ -36,6 +38,7 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   measureDecimals: 3,
   textHeight: 2.5,
+  markupStroke: 2,
   showLineweights: false,
 }
 
@@ -50,6 +53,7 @@ export function loadSettings(): AppSettings {
       snap: { ...defaultSettings.snap, ...parsed.snap },
       theme: parsed.theme === 'light' ? 'light' : 'dark',
       textHeight: parsed.textHeight ?? defaultSettings.textHeight,
+      markupStroke: parsed.markupStroke && parsed.markupStroke > 0 ? parsed.markupStroke : defaultSettings.markupStroke,
       measureDecimals: parsed.measureDecimals ?? defaultSettings.measureDecimals,
       showLineweights: parsed.showLineweights === true,
     }
