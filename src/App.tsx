@@ -33,7 +33,7 @@ import type { FileSource, OpenedFile, RecentFileEntry } from './fileTypes'
 import { formatBytes, sourceLabel } from './fileTypes'
 import { OpenFilesPanel } from './OpenFilesPanel'
 import { listRecentFiles, loadCachedFile, toggleRecentFavorite } from './recentFiles'
-import { boundsForEntities, buildDxfTransform } from './dxfTransform'
+import { applyCamera, boundsForEntities, buildDxfTransform, gestureDelta } from './dxfTransform'
 import {
   actionIdToDrawTool,
   canFinalizeDrawShape,
@@ -99,6 +99,11 @@ declare global {
       pullChunk?: (offset: number, length: number) => string
       clearPending?: () => void
     }
+    __dwgViewer?: {
+      zoomIn: () => void
+      zoomOut: () => void
+      fit: () => void
+    }
   }
 }
 
@@ -139,7 +144,7 @@ const topTools: Array<{ icon: any; label: string; action: ToolbarAction }> = [
 ]
 
 const MIN_VIEW_SCALE = 0.2
-const MAX_VIEW_SCALE = 12
+const MAX_VIEW_SCALE = 256
 const ZOOM_FACTOR = 1.22
 
 const menuItems: Array<{ icon: any; label: string; action: MenuAction }> = [
@@ -256,44 +261,67 @@ function DrawingViewport({
   panLocked = false,
   onViewportChange,
 }: {
-  children: ReactNode
+  children: (camera: ViewportState) => ReactNode
   resetKey: string
   actionsRef: React.MutableRefObject<ViewportHandle | null>
   panLocked?: boolean
   onViewportChange?: (state: ViewportState) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const [viewport, setViewport] = useState<ViewportState>({ scale: 1, panX: 0, panY: 0 })
+  const [committed, setCommitted] = useState<ViewportState>({ scale: 1, panX: 0, panY: 0 })
+  const [gesture, setGesture] = useState<ViewportState | null>(null)
   const [isPanning, setIsPanning] = useState(false)
-  const panSession = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null)
+  const committedRef = useRef(committed)
+  const gestureRef = useRef<ViewportState | null>(null)
+  committedRef.current = committed
+  const panSession = useRef<{ pointerId: number; startX: number; startY: number; scale: number; panX: number; panY: number } | null>(null)
   const pinchSession = useRef<{ distance: number; scale: number; panX: number; panY: number } | null>(null)
 
+  const setLive = (next: ViewportState) => {
+    gestureRef.current = next
+    setGesture(next)
+  }
+
+  const commitGesture = () => {
+    const live = gestureRef.current
+    if (!live) return
+    gestureRef.current = null
+    setGesture(null)
+    setCommitted(live)
+  }
+
+  const commitCamera = (next: ViewportState) => {
+    gestureRef.current = null
+    setGesture(null)
+    setCommitted(next)
+  }
+
+  const displayedCamera = () => gestureRef.current ?? committedRef.current
+
   const fitToScreen = useCallback(() => {
-    setViewport({ scale: 1, panX: 0, panY: 0 })
+    gestureRef.current = null
+    setGesture(null)
+    setCommitted({ scale: 1, panX: 0, panY: 0 })
   }, [])
 
   const zoomIn = useCallback(() => {
     const host = hostRef.current
     if (!host) {
-      setViewport((current) => ({ ...current, scale: clampScale(current.scale * ZOOM_FACTOR) }))
+      commitCamera({ ...displayedCamera(), scale: clampScale(displayedCamera().scale * ZOOM_FACTOR) })
       return
     }
     const rect = host.getBoundingClientRect()
-    const anchorX = rect.width / 2
-    const anchorY = rect.height / 2
-    setViewport((current) => zoomAtPoint(current, ZOOM_FACTOR, anchorX, anchorY))
+    commitCamera(zoomAtPoint(displayedCamera(), ZOOM_FACTOR, rect.width / 2, rect.height / 2))
   }, [])
 
   const zoomOut = useCallback(() => {
     const host = hostRef.current
     if (!host) {
-      setViewport((current) => ({ ...current, scale: clampScale(current.scale / ZOOM_FACTOR) }))
+      commitCamera({ ...displayedCamera(), scale: clampScale(displayedCamera().scale / ZOOM_FACTOR) })
       return
     }
     const rect = host.getBoundingClientRect()
-    const anchorX = rect.width / 2
-    const anchorY = rect.height / 2
-    setViewport((current) => zoomAtPoint(current, 1 / ZOOM_FACTOR, anchorX, anchorY))
+    commitCamera(zoomAtPoint(displayedCamera(), 1 / ZOOM_FACTOR, rect.width / 2, rect.height / 2))
   }, [])
 
   useEffect(() => {
@@ -309,18 +337,17 @@ function DrawingViewport({
     const width = Math.abs(rect.x2 - rect.x1)
     const height = Math.abs(rect.y2 - rect.y1)
     if (width < 12 || height < 12) return
-    setViewport((current) => {
-      const factor = Math.min(hostRect.width / width, hostRect.height / height)
-      const nextScale = clampScale(current.scale * factor)
-      const centerX = x1 + width / 2
-      const centerY = y1 + height / 2
-      const localX = (centerX - current.panX) / current.scale
-      const localY = (centerY - current.panY) / current.scale
-      return {
-        scale: nextScale,
-        panX: hostRect.width / 2 - localX * nextScale,
-        panY: hostRect.height / 2 - localY * nextScale,
-      }
+    const current = displayedCamera()
+    const factor = Math.min(hostRect.width / width, hostRect.height / height)
+    const nextScale = clampScale(current.scale * factor)
+    const centerX = x1 + width / 2
+    const centerY = y1 + height / 2
+    const localX = (centerX - current.panX) / current.scale
+    const localY = (centerY - current.panY) / current.scale
+    commitCamera({
+      scale: nextScale,
+      panX: hostRect.width / 2 - localX * nextScale,
+      panY: hostRect.height / 2 - localY * nextScale,
     })
   }, [])
 
@@ -332,8 +359,9 @@ function DrawingViewport({
   }, [actionsRef, fitToScreen, zoomIn, zoomOut, zoomToScreenRect])
 
   useEffect(() => {
-    onViewportChange?.(viewport)
-  }, [onViewportChange, viewport])
+    if (gesture) return
+    onViewportChange?.(committed)
+  }, [committed, gesture, onViewportChange])
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -343,7 +371,7 @@ function DrawingViewport({
     const anchorX = event.clientX - rect.left
     const anchorY = event.clientY - rect.top
     const factor = event.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR
-    setViewport((current) => zoomAtPoint(current, factor, anchorX, anchorY))
+    commitCamera(zoomAtPoint(displayedCamera(), factor, anchorX, anchorY))
   }
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -351,23 +379,25 @@ function DrawingViewport({
     const host = hostRef.current
     if (!host) return
     host.setPointerCapture(event.pointerId)
+    const camera = displayedCamera()
     panSession.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      panX: viewport.panX,
-      panY: viewport.panY,
+      scale: camera.scale,
+      panX: camera.panX,
+      panY: camera.panY,
     }
   }
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const session = panSession.current
     if (!session || session.pointerId !== event.pointerId) return
-    setViewport((current) => ({
-      ...current,
+    setLive({
+      scale: session.scale,
       panX: session.panX + (event.clientX - session.startX),
       panY: session.panY + (event.clientY - session.startY),
-    }))
+    })
   }
 
   const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -375,6 +405,7 @@ function DrawingViewport({
     if (!session || session.pointerId !== event.pointerId) return
     panSession.current = null
     hostRef.current?.releasePointerCapture(event.pointerId)
+    commitGesture()
   }
 
   const touchDistance = (touches: React.TouchList) => {
@@ -398,11 +429,12 @@ function DrawingViewport({
     setIsPanning(false)
     const host = hostRef.current
     if (!host) return
+    const camera = displayedCamera()
     pinchSession.current = {
       distance: touchDistance(event.touches),
-      scale: viewport.scale,
-      panX: viewport.panX,
-      panY: viewport.panY,
+      scale: camera.scale,
+      panX: camera.panX,
+      panY: camera.panY,
     }
   }
 
@@ -418,7 +450,7 @@ function DrawingViewport({
     const center = touchCenter(event.touches, rect)
     const nextScale = clampScale(start.scale * (distance / start.distance))
     const ratio = nextScale / start.scale
-    setViewport({
+    setLive({
       scale: nextScale,
       panX: center.x - (center.x - start.panX) * ratio,
       panY: center.y - (center.y - start.panY) * ratio,
@@ -426,11 +458,13 @@ function DrawingViewport({
   }
 
   const handleTouchEnd = () => {
+    if (!pinchSession.current) return
     pinchSession.current = null
+    commitGesture()
   }
 
   const handlePointerDownWithState = (event: React.PointerEvent<HTMLDivElement>) => {
-    setIsPanning(true)
+    if (!panLocked && event.button === 0) setIsPanning(true)
     handlePointerDown(event)
   }
 
@@ -438,6 +472,8 @@ function DrawingViewport({
     setIsPanning(false)
     endPan(event)
   }
+
+  const delta = gesture ? gestureDelta(committed, gesture) : null
 
   return (
     <div
@@ -455,12 +491,10 @@ function DrawingViewport({
       aria-label="Cizim alani: surukleyerek kaydir, tekerlek veya iki parmakla yakinlastir"
     >
       <div
-        className="viewport-transform"
-        style={{
-          transform: `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.scale})`,
-        }}
+        className={`viewport-transform${delta ? ' is-gesturing' : ''}`}
+        style={delta ? { transform: `translate(${delta.panX}px, ${delta.panY}px) scale(${delta.scale})` } : undefined}
       >
-        {children}
+        {children(committed)}
       </div>
     </div>
   )
@@ -784,6 +818,10 @@ function App() {
   const dxfTransform = useMemo(
     () => (sceneBounds ? buildDxfTransform(sceneBounds, viewSize.width, viewSize.height) : undefined),
     [sceneBounds, viewSize.height, viewSize.width],
+  )
+  const canvasEntities = useMemo(
+    () => (openedFile?.entities ?? []).slice(0, entityLimit),
+    [entityLimit, openedFile?.entities],
   )
   const measureHint = activeMeasureMode ? MEASURE_HINTS[activeMeasureMode] : ''
 
@@ -1415,8 +1453,8 @@ function App() {
     try {
       const base = (openedFile?.name ?? 'cizim').replace(/\.[^.]+$/, '')
       const watermark = pro ? null : 'DWG Viewer'
-      if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark)
-      else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark)
+      if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights)
+      else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights)
       notify(kind === 'pdf' ? 'PDF paylasildi.' : 'Gorsel paylasildi.')
     } catch (exportError) {
       notify(exportError instanceof Error ? exportError.message : 'Disa aktarma basarisiz.')
@@ -1580,6 +1618,38 @@ function App() {
     // Mount-only: the native bridge dispatches the open event after the WebView is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('stress') !== '1') return
+    let cancelled = false
+    void import('./cad/stressPlan').then(({ buildStressPlan }) => {
+      if (cancelled) return
+      const entities = buildStressPlan()
+      setError('')
+      setOpenedFile({
+        name: 'cok-sayfa-plan.dxf',
+        size: entities.length,
+        format: 'dxf',
+        source: 'device',
+        entities,
+        layoutName: 'Model',
+        document: { format: 'dxf', version: 'STRESS', layers: [], layouts: [], warnings: [] },
+      })
+      setScreen('viewer')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('stress') !== '1') return
+    window.__dwgViewer = {
+      zoomIn: () => viewportRef.current?.zoomIn(),
+      zoomOut: () => viewportRef.current?.zoomOut(),
+      fit: () => viewportRef.current?.fit(),
+    }
+  }, [openedFile, screen])
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -2294,18 +2364,22 @@ function App() {
             panLocked={!!activeMeasureMode || drawModeOpen || !!activeEditTool || !!markupPlaceMode}
             onViewportChange={setViewport}
           >
+            {(camera) => {
+              const overlayTransform = dxfTransform ? applyCamera(dxfTransform, camera) : undefined
+              return (
             <div className="viewport-content" ref={contentRef}>
               {openedFile?.format === 'pdf' && openedFile.url ? (
                 <iframe className="pdf-frame" title={openedFile.name} src={openedFile.url} />
-              ) : openedFile?.entities?.length ? (
+              ) : canvasEntities.length ? (
                 <CadCanvas
-                  entities={openedFile.entities.slice(0, entityLimit)}
+                  entities={canvasEntities}
                   hiddenLayers={hiddenLayers}
                   theme={appSettings.theme}
                   viewWidth={viewSize.width}
                   viewHeight={viewSize.height}
                   bounds={sceneBounds}
-                  viewScale={viewport.scale}
+                  camera={camera}
+                  showLineweights={appSettings.showLineweights}
                 />
               ) : (
                 <div className="native-format-card">
@@ -2318,7 +2392,7 @@ function App() {
               <SavedMeasuresLayer
                 records={measureRecords}
                 coordMode={coordMode}
-                dxfTransform={dxfTransform}
+                dxfTransform={overlayTransform}
                 hidden={measureOverlaysHidden}
               />
               <MarkupLayer
@@ -2326,21 +2400,21 @@ function App() {
                 media={mediaMarkers}
                 texts={textNotes}
                 coordMode={coordMode}
-                dxfTransform={dxfTransform}
+                dxfTransform={overlayTransform}
                 onSelectMedia={setMediaPreview}
               />
               <SketchLayer
                 shapes={sketchShapes}
                 draftShape={draftSketchShape}
                 coordMode={coordMode}
-                dxfTransform={dxfTransform}
+                dxfTransform={overlayTransform}
               />
               <MeasureOverlay
                 mode={activeMeasureMode}
                 draftPoints={draftPoints}
                 snapPreview={snapPreview}
                 coordMode={coordMode}
-                dxfTransform={dxfTransform}
+                dxfTransform={overlayTransform}
                 hint={measureHint}
               />
               {zoomWindowMode && (
@@ -2409,6 +2483,8 @@ function App() {
                 </div>
               )}
             </div>
+              )
+            }}
           </DrawingViewport>
 
           {error && <div className="file-error">{error}</div>}

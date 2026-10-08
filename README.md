@@ -13,6 +13,8 @@ Web arayüzü React 18, TypeScript, Vite ve Tailwind ile yazıldı. Android kabu
 
 Ortak nesneler: çizgi, polyline / lwpolyline (bulge ve sabit genişlik dahil), yay, daire, elips, spline, yazı / mtext (hizalama, genişlik faktörü, eğiklik, Türkçe karakterler), ölçü, tarama, blok ve iç içe insert, katman rengi ve çizgi tipi, model ve kağıt düzenleri.
 
+Çizgiler varsayılan olarak bir cihaz pikseli kalınlığındadır (saç teli). Ayarlardaki **Çizgi kalınlıklarını göster** açılınca gerçek çizgi kalınlığı yakınlaştırmayla ölçeklenir. Kaydırma ve sıkıştırma sırasında görüntü yalnızca hareket boyunca kayar; parmak kalkınca çizim o ölçekte yeniden çizilir.
+
 WhatsApp veya BiP’te bir DWG/DXF’e dokununca DWG Viewer Pro, Birlikte aç listesinde görünür. Her zaman seçilirse aynı tür dosyalar doğrudan açılır. Dosya `application/octet-stream` gelse bile başlıktaki `AC10` imzasından DWG olduğu anlaşılır ve görünen ad `OpenableColumns` ile okunur. İzin kaybolmadan içerik önbelleğe kopyalanır. Uygulama `singleTask` olduğu için ikinci dokunuş yeni bir pencere yığmaz.
 
 ## Ücretsiz ve Pro

@@ -155,3 +155,28 @@ export function worldToViewBox(
     y: transform.offsetY + (transform.bounds.maxY - point.y) * transform.scale,
   }
 }
+
+/** Camera relative to the fit-to-screen transform. scale 1 and pan 0 is the fitted view. */
+export type ViewCamera = { scale: number; panX: number; panY: number }
+
+export function applyCamera(base: DxfTransform, camera: ViewCamera): DxfTransform {
+  const scale = camera.scale > 0 && Number.isFinite(camera.scale) ? camera.scale : 1
+  const panX = Number.isFinite(camera.panX) ? camera.panX : 0
+  const panY = Number.isFinite(camera.panY) ? camera.panY : 0
+  return {
+    ...base,
+    scale: base.scale * scale,
+    offsetX: panX + scale * base.offsetX,
+    offsetY: panY + scale * base.offsetY,
+  }
+}
+
+/** CSS transform that carries a fitted bitmap from the committed camera to the live gesture. */
+export function gestureDelta(committed: ViewCamera, gesture: ViewCamera): ViewCamera {
+  const scale = committed.scale > 0 ? gesture.scale / committed.scale : 1
+  return {
+    scale,
+    panX: gesture.panX - scale * committed.panX,
+    panY: gesture.panY - scale * committed.panY,
+  }
+}

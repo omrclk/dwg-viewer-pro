@@ -18,6 +18,8 @@ export type AppSettings = {
   theme: AppTheme
   measureDecimals: number
   textHeight: number
+  /** When off, every stroke is a 1-device-pixel hairline. */
+  showLineweights: boolean
 }
 
 const STORAGE_KEY = 'dwg-viewer-settings'
@@ -34,6 +36,7 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   measureDecimals: 3,
   textHeight: 2.5,
+  showLineweights: false,
 }
 
 export function loadSettings(): AppSettings {
@@ -48,6 +51,7 @@ export function loadSettings(): AppSettings {
       theme: parsed.theme === 'light' ? 'light' : 'dark',
       textHeight: parsed.textHeight ?? defaultSettings.textHeight,
       measureDecimals: parsed.measureDecimals ?? defaultSettings.measureDecimals,
+      showLineweights: parsed.showLineweights === true,
     }
   } catch {
     return defaultSettings

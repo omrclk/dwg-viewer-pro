@@ -1,7 +1,9 @@
 import type { DrawingEntity, TextRun } from '../drawingTypes'
-import { boundsForEntities, buildDxfTransform, isUsableBounds, worldToViewBox, type Bounds, type DxfTransform } from '../dxfTransform'
+import { applyCamera, boundsForEntities, buildDxfTransform, isUsableBounds, worldToViewBox, type Bounds, type DxfTransform, type ViewCamera } from '../dxfTransform'
 import { sampleArc } from './geometry'
+import { claimHairlineSpan, decimateScreenPoints, hairlineCss, resolveStrokeWidth, snapDevice } from './hairline'
 import { screenTextSize } from './mtext'
+import { buildSpatialIndex, entityWorldBox, querySpatialIndex, viewWorldBounds, type SpatialIndex } from './spatialIndex'
 
 export type SceneTheme = 'dark' | 'light'
 
@@ -17,18 +19,6 @@ function strokeColor(color: string | undefined, theme: SceneTheme) {
   return color
 }
 
-function tracePoints(ctx: CanvasRenderingContext2D, points: Array<{ x: number; y: number }>, transform: DxfTransform, close: boolean) {
-  if (points.length < 2) return
-  const first = worldToViewBox(points[0], transform)
-  ctx.beginPath()
-  ctx.moveTo(first.x, first.y)
-  for (let index = 1; index < points.length; index += 1) {
-    const point = worldToViewBox(points[index], transform)
-    ctx.lineTo(point.x, point.y)
-  }
-  if (close) ctx.closePath()
-}
-
 const TEXT_FONT = '"Roboto", "Noto Sans", "Segoe UI", sans-serif'
 
 function runSize(run: TextRun, baseHeight: number, basePixels: number) {
@@ -41,10 +31,9 @@ function drawCadText(
   entity: Extract<DrawingEntity, { type: 'text' }>,
   transform: DxfTransform,
   color: string,
-  viewScale: number,
 ) {
   const raster = entity.height * transform.scale
-  const onScreen = screenTextSize(entity.height, transform.scale * viewScale)
+  const onScreen = screenTextSize(entity.height, transform.scale)
   if (!(raster > 0) || onScreen === 0) return
 
   const source = entity.lines?.length
@@ -166,6 +155,58 @@ function drawRunLine(
   })
 }
 
+type ScreenPoint = { x: number; y: number }
+type StrokeOp =
+  | { kind: 'poly'; points: ScreenPoint[]; close: boolean }
+  | { kind: 'circle'; x: number; y: number; r: number }
+type StrokeBucket = { color: string; dash: number[]; width: number; ops: StrokeOp[] }
+
+function toScreen(points: Array<{ x: number; y: number }>, transform: DxfTransform, minDist: number, dpr: number, snap: boolean) {
+  const mapped = points.map((point) => worldToViewBox(point, transform))
+  const decimated = decimateScreenPoints(mapped, minDist)
+  if (!snap) return decimated
+  return decimated.map((point) => ({ x: snapDevice(point.x, dpr), y: snapDevice(point.y, dpr) }))
+}
+
+function pushSegments(
+  bucket: StrokeBucket,
+  points: ScreenPoint[],
+  close: boolean,
+  dpr: number,
+  takenRows: Set<number>,
+  takenCols: Set<number>,
+  cull: boolean,
+) {
+  if (points.length < 2) return
+  const keep = (from: ScreenPoint, to: ScreenPoint) => {
+    if (!cull) return true
+    const dx = Math.abs(to.x - from.x)
+    const dy = Math.abs(to.y - from.y)
+    if (dx >= dy * 3 && dx * dpr >= 2) return claimHairlineSpan(takenRows, (from.y + to.y) / 2, from.x, to.x, dpr)
+    if (dy >= dx * 3 && dy * dpr >= 2) return claimHairlineSpan(takenCols, (from.x + to.x) / 2, from.y, to.y, dpr)
+    return true
+  }
+  if (!close && points.length === 2) {
+    if (keep(points[0], points[1])) bucket.ops.push({ kind: 'poly', points, close: false })
+    return
+  }
+  let current: ScreenPoint[] = [points[0]]
+  const flush = () => {
+    if (current.length >= 2) bucket.ops.push({ kind: 'poly', points: current, close: false })
+  }
+  for (let index = 1; index < points.length; index += 1) {
+    if (keep(points[index - 1], points[index])) current.push(points[index])
+    else {
+      flush()
+      current = [points[index]]
+    }
+  }
+  if (close && keep(points[points.length - 1], points[0]) && current.length >= 2) {
+    current.push(points[0])
+  }
+  flush()
+}
+
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   options: {
@@ -177,84 +218,168 @@ export function renderScene(
     viewHeight: number
     theme: SceneTheme
     bounds?: Bounds | null
-    viewScale?: number
+    camera?: ViewCamera
+    showLineweights?: boolean
+    dpr?: number
+    index?: SpatialIndex
   },
 ) {
   const { entities, hiddenLayers, width, height, viewWidth, viewHeight, theme } = options
-  const viewScale = options.viewScale && options.viewScale > 0 ? options.viewScale : 1
+  const showLineweights = options.showLineweights === true
   const visible = entities.filter((entity) => !hiddenLayers.has(entity.layer))
   const bounds = isUsableBounds(options.bounds) ? options.bounds : boundsForEntities(visible.length ? visible : entities)
-  const transform = buildDxfTransform(bounds, viewWidth, viewHeight)
+  const fit = buildDxfTransform(bounds, viewWidth, viewHeight)
+  const transform = options.camera ? applyCamera(fit, options.camera) : fit
+  const dpr = options.dpr && options.dpr > 0 ? options.dpr : width / Math.max(1, viewWidth)
+  const hairline = hairlineCss(dpr)
   const background = theme === 'light' ? '#f6f3ec' : '#0b0d0d'
+  const index = options.index ?? (entities.length > 4000 ? buildSpatialIndex(entities) : undefined)
+  const view = viewWorldBounds(transform)
+  const hits = index ? querySpatialIndex(index, view) : null
+  const drawList = hits
+    ? hits.flatMap((entityIndex) => {
+        const entity = entities[entityIndex]
+        return entity && !hiddenLayers.has(entity.layer) ? [entity] : []
+      })
+    : visible
 
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, width, height)
+  ctx.imageSmoothingEnabled = false
   ctx.fillStyle = background
   ctx.fillRect(0, 0, width, height)
 
   const scaleX = width / Math.max(1, viewWidth)
   const scaleY = height / Math.max(1, viewHeight)
   ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0)
-  ctx.lineWidth = 1.15
-  ctx.lineJoin = 'round'
-  ctx.lineCap = 'round'
-  const strokeCap = Math.min(viewWidth, viewHeight) * 0.06
+  ctx.lineWidth = hairline
+  ctx.lineJoin = 'miter'
+  ctx.miterLimit = 2
+  ctx.lineCap = 'butt'
+  ctx.imageSmoothingEnabled = false
 
-  const drawGeometry = (entity: DrawingEntity) => {
+  const strokes = new Map<string, StrokeBucket>()
+  const fills: Array<{ color: string; points: ScreenPoint[] }> = []
+  const dots: Array<{ color: string; x: number; y: number }> = []
+  const takenRows = new Set<number>()
+  const takenCols = new Set<number>()
+  const dust = 0.35 / dpr
+  const dot = 1 / dpr
+  const minSep = 0.75 / dpr
+
+  const bucketFor = (color: string, dash: number[], width: number) => {
+    const key = `${color}|${width.toFixed(4)}|${dash.join(',')}`
+    let bucket = strokes.get(key)
+    if (!bucket) {
+      bucket = { color, dash, width, ops: [] }
+      strokes.set(key, bucket)
+    }
+    return bucket
+  }
+
+  drawList.forEach((entity) => {
+    if (entity.type === 'text') return
     const color = strokeColor(entity.color, theme)
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
+    const box = entityWorldBox(entity)
+    if (box) {
+      const boxWidth = (box.maxX - box.minX) * transform.scale
+      const boxHeight = (box.maxY - box.minY) * transform.scale
+      if (boxWidth < dust && boxHeight < dust) return
+      if (boxWidth <= dot && boxHeight <= dot) {
+        const center = worldToViewBox({ x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 }, transform)
+        dots.push({ color, x: Math.round(center.x * dpr) / dpr, y: Math.round(center.y * dpr) / dpr })
+        return
+      }
+    }
+
     const dash = 'dash' in entity && entity.dash ? entity.dash.map((part) => part * transform.scale) : []
-    ctx.setLineDash(dash)
 
     if (entity.type === 'line') {
-      tracePoints(ctx, [{ x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 }], transform, false)
-      ctx.stroke()
+      const points = toScreen(
+        [{ x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 }],
+        transform,
+        minSep,
+        dpr,
+        true,
+      )
+      pushSegments(bucketFor(color, dash, hairline), points, false, dpr, takenRows, takenCols, true)
       return
     }
 
     if (entity.type === 'circle') {
+      const radius = entity.r * transform.scale
+      if (!(radius > 0)) return
       const center = worldToViewBox({ x: entity.cx, y: entity.cy }, transform)
-      ctx.beginPath()
-      ctx.arc(center.x, center.y, Math.max(0.4, entity.r * transform.scale), 0, Math.PI * 2)
-      ctx.stroke()
+      if (radius * 2 <= dot) {
+        dots.push({ color, x: Math.round(center.x * dpr) / dpr, y: Math.round(center.y * dpr) / dpr })
+        return
+      }
+      const snapped = { x: snapDevice(center.x, dpr), y: snapDevice(center.y, dpr) }
+      bucketFor(color, dash, hairline).ops.push({ kind: 'circle', x: snapped.x, y: snapped.y, r: radius })
       return
     }
 
     if (entity.type === 'arc') {
-      tracePoints(ctx, sampleArc(entity.cx, entity.cy, entity.r, entity.start, entity.end, 28), transform, false)
-      ctx.stroke()
+      const points = toScreen(sampleArc(entity.cx, entity.cy, entity.r, entity.start, entity.end, 28), transform, minSep, dpr, true)
+      pushSegments(bucketFor(color, dash, hairline), points, false, dpr, takenRows, takenCols, false)
       return
     }
 
     if (entity.type === 'polyline') {
-      const worldWidth = entity.strokeWidth && entity.strokeWidth > 0 ? entity.strokeWidth * transform.scale : 1.15
-      ctx.lineWidth = Math.max(0.75, Math.min(worldWidth, strokeCap))
-      tracePoints(ctx, entity.points, transform, entity.closed)
-      ctx.stroke()
-      ctx.lineWidth = 1.15
+      const width = resolveStrokeWidth(showLineweights, entity.strokeWidth, transform.scale, hairline)
+      const crisp = width <= hairline * 1.05
+      const points = toScreen(entity.points, transform, minSep, dpr, crisp)
+      pushSegments(bucketFor(color, dash, width), points, entity.closed, dpr, takenRows, takenCols, crisp)
       return
     }
 
-    if (entity.type === 'solid') {
-      tracePoints(ctx, entity.points, transform, true)
-      ctx.globalAlpha = theme === 'light' ? 0.28 : 0.35
-      ctx.fill('evenodd')
-      ctx.globalAlpha = 1
-      ctx.lineWidth = 1
-      ctx.stroke()
-      ctx.lineWidth = 1.15
+    if (entity.type === 'solid' && entity.points.length >= 3) {
+      fills.push({ color, points: entity.points.map((point) => worldToViewBox(point, transform)) })
     }
-  }
-
-  visible.forEach((entity) => {
-    if (entity.type !== 'text') drawGeometry(entity)
-  })
-  ctx.setLineDash([])
-  visible.forEach((entity) => {
-    if (entity.type === 'text' && entity.text) drawCadText(ctx, entity, transform, strokeColor(entity.color, theme), viewScale)
   })
 
+  fills.forEach((fill) => {
+    if (fill.points.length < 3) return
+    ctx.beginPath()
+    ctx.moveTo(fill.points[0].x, fill.points[0].y)
+    for (let index = 1; index < fill.points.length; index += 1) ctx.lineTo(fill.points[index].x, fill.points[index].y)
+    ctx.closePath()
+    ctx.fillStyle = fill.color
+    ctx.globalAlpha = theme === 'light' ? 0.28 : 0.35
+    ctx.fill('evenodd')
+    ctx.globalAlpha = 1
+  })
+
+  const dotSize = 1 / dpr
+  dots.forEach((dotMark) => {
+    ctx.fillStyle = dotMark.color
+    ctx.fillRect(dotMark.x, dotMark.y, dotSize, dotSize)
+  })
+
+  strokes.forEach((bucket) => {
+    if (!bucket.ops.length) return
+    ctx.beginPath()
+    ctx.strokeStyle = bucket.color
+    ctx.lineWidth = bucket.width
+    ctx.setLineDash(bucket.dash)
+    bucket.ops.forEach((op) => {
+      if (op.kind === 'circle') {
+        ctx.moveTo(op.x + op.r, op.y)
+        ctx.arc(op.x, op.y, op.r, 0, Math.PI * 2)
+        return
+      }
+      ctx.moveTo(op.points[0].x, op.points[0].y)
+      for (let index = 1; index < op.points.length; index += 1) ctx.lineTo(op.points[index].x, op.points[index].y)
+      if (op.close) ctx.closePath()
+    })
+    ctx.stroke()
+  })
+
   ctx.setLineDash([])
+  ctx.lineWidth = hairline
+  drawList.forEach((entity) => {
+    if (entity.type === 'text' && entity.text) drawCadText(ctx, entity, transform, strokeColor(entity.color, theme))
+  })
+
   return transform
 }

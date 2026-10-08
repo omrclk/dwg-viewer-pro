@@ -63,6 +63,14 @@ export function SettingsPanel({
           onChange={(event) => onChange({ ...settings, snap: { ...settings.snap, enabled: event.target.checked } })}
         />
       </label>
+      <label className="settings-row">
+        <span>Çizgi kalınlıklarını göster</span>
+        <input
+          type="checkbox"
+          checked={settings.showLineweights}
+          onChange={(event) => onChange({ ...settings, showLineweights: event.target.checked })}
+        />
+      </label>
       <div className="settings-links">
         <button type="button" onClick={onUpgrade}>
           {pro ? 'Pro acik' : 'Pro kilidi'}

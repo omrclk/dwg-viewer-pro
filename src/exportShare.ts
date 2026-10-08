@@ -16,15 +16,27 @@ export async function renderDrawingBlob(
   hiddenLayers: Set<string>,
   theme: SceneTheme,
   watermark: string | null,
+  showLineweights = false,
 ) {
   const viewWidth = 1600
   const viewHeight = 1100
   const canvas = document.createElement('canvas')
   canvas.width = viewWidth
   canvas.height = viewHeight
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { alpha: false })
   if (!ctx) throw new Error('Canvas olusturulamadi.')
-  renderScene(ctx, { entities, hiddenLayers, width: viewWidth, height: viewHeight, viewWidth, viewHeight, theme })
+  ctx.imageSmoothingEnabled = false
+  renderScene(ctx, {
+    entities,
+    hiddenLayers,
+    width: viewWidth,
+    height: viewHeight,
+    viewWidth,
+    viewHeight,
+    theme,
+    showLineweights,
+    dpr: 1,
+  })
   if (watermark) {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.font = '600 28px sans-serif'
@@ -97,13 +109,27 @@ async function shareOrDownload(blob: Blob, filename: string, mime: string) {
   downloadBlob(new Blob([blob], { type: mime }), filename)
 }
 
-export async function exportDrawingPng(entities: DrawingEntity[], hiddenLayers: Set<string>, theme: SceneTheme, filename: string, watermark: string | null) {
-  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark)
+export async function exportDrawingPng(
+  entities: DrawingEntity[],
+  hiddenLayers: Set<string>,
+  theme: SceneTheme,
+  filename: string,
+  watermark: string | null,
+  showLineweights = false,
+) {
+  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights)
   await shareOrDownload(blob, filename.replace(/\.\w+$/, '') + '.jpg', 'image/jpeg')
 }
 
-export async function exportDrawingPdf(entities: DrawingEntity[], hiddenLayers: Set<string>, theme: SceneTheme, filename: string, watermark: string | null) {
-  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark)
+export async function exportDrawingPdf(
+  entities: DrawingEntity[],
+  hiddenLayers: Set<string>,
+  theme: SceneTheme,
+  filename: string,
+  watermark: string | null,
+  showLineweights = false,
+) {
+  const blob = await renderDrawingBlob(entities, hiddenLayers, theme, watermark, showLineweights)
   const jpeg = new Uint8Array(await blob.arrayBuffer())
   const pdf = jpegPdf(jpeg, 1600, 1100)
   await shareOrDownload(new Blob([pdf], { type: 'application/pdf' }), filename.replace(/\.\w+$/, '') + '.pdf', 'application/pdf')

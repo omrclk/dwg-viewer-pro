@@ -141,6 +141,9 @@
   position: absolute;
   inset: 0;
   transform-origin: 0 0;
+}
+
+.viewport-transform.is-gesturing {
   will-change: transform;
 }
 
@@ -1797,11 +1800,12 @@ button {
 
 .cad-canvas {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  left: 0;
+  top: 0;
   display: block;
   background: #0b0d0d;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .theme-light .cad-canvas,

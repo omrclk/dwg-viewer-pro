@@ -1,7 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DrawingEntity } from '../drawingTypes'
-import type { Bounds } from '../dxfTransform'
+import type { Bounds, ViewCamera } from '../dxfTransform'
 import { renderScene, type SceneTheme } from '../cad/renderScene'
+import { readDevicePixelRatio } from '../cad/hairline'
+import { buildSpatialIndex } from '../cad/spatialIndex'
+
+const IDENTITY_CAMERA: ViewCamera = { scale: 1, panX: 0, panY: 0 }
 
 export function CadCanvas({
   entities,
@@ -10,7 +14,8 @@ export function CadCanvas({
   viewWidth,
   viewHeight,
   bounds,
-  viewScale = 1,
+  camera = IDENTITY_CAMERA,
+  showLineweights = false,
 }: {
   entities: DrawingEntity[]
   hiddenLayers: Set<string>
@@ -18,22 +23,46 @@ export function CadCanvas({
   viewWidth: number
   viewHeight: number
   bounds?: Bounds | null
-  viewScale?: number
+  camera?: ViewCamera
+  showLineweights?: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [dpr, setDpr] = useState(readDevicePixelRatio)
+  const index = useMemo(() => (entities.length > 4000 ? buildSpatialIndex(entities) : undefined), [entities])
+  const cameraScale = camera.scale
+  const cameraPanX = camera.panX
+  const cameraPanY = camera.panY
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || viewWidth < 2 || viewHeight < 2) return
-    const ratio = Math.min(3, Math.max(1, window.devicePixelRatio || 1))
+    const update = () => {
+      const next = readDevicePixelRatio()
+      setDpr((current) => (current === next ? current : next))
+    }
+    update()
+    window.addEventListener('resize', update)
+    const viewport = window.visualViewport
+    viewport?.addEventListener('resize', update)
+    const timer = window.setTimeout(update, 280)
+    return () => {
+      window.removeEventListener('resize', update)
+      viewport?.removeEventListener('resize', update)
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const node = canvasRef.current
+    if (!node || viewWidth < 2 || viewHeight < 2) return
+    const ratio = dpr
     const width = Math.max(1, Math.floor(viewWidth * ratio))
     const height = Math.max(1, Math.floor(viewHeight * ratio))
-    canvas.width = width
-    canvas.height = height
-    canvas.style.width = `${Math.round(viewWidth)}px`
-    canvas.style.height = `${Math.round(viewHeight)}px`
-    const ctx = canvas.getContext('2d')
+    if (node.width !== width) node.width = width
+    if (node.height !== height) node.height = height
+    node.style.width = `${viewWidth}px`
+    node.style.height = `${viewHeight}px`
+    const ctx = node.getContext('2d', { alpha: false, willReadFrequently: true })
     if (!ctx) return
+    ctx.imageSmoothingEnabled = false
     renderScene(ctx, {
       entities,
       hiddenLayers,
@@ -43,9 +72,12 @@ export function CadCanvas({
       viewHeight,
       theme,
       bounds,
-      viewScale,
+      camera: { scale: cameraScale, panX: cameraPanX, panY: cameraPanY },
+      showLineweights,
+      dpr: ratio,
+      index,
     })
-  }, [bounds, entities, hiddenLayers, theme, viewScale, viewWidth, viewHeight])
+  }, [bounds, cameraPanX, cameraPanY, cameraScale, dpr, entities, hiddenLayers, index, showLineweights, theme, viewWidth, viewHeight])
 
-  return <canvas ref={canvasRef} className="cad-canvas" aria-label="Cizim" />
+  return <canvas ref={canvasRef} data-dpr={dpr} className="cad-canvas" aria-label="Cizim" />
 }
