@@ -38,14 +38,14 @@ export function isOneDriveConfigured() {
 export async function pickOneDriveFile(): Promise<File> {
   const clientId = import.meta.env.VITE_ONEDRIVE_CLIENT_ID
   if (!clientId) {
-    throw new Error('OneDrive icin VITE_ONEDRIVE_CLIENT_ID tanimlayin (.env)')
+    throw new Error('OneDrive için VITE_ONEDRIVE_CLIENT_ID tanimlayin (.env)')
   }
 
   await loadScript('https://js.live.net/v7.2/OneDrive.js', 'onedrive-js')
 
   return new Promise((resolve, reject) => {
     if (!window.OneDrive) {
-      reject(new Error('OneDrive picker yuklenemedi'))
+      reject(new Error('OneDrive seçici yüklenemedi'))
       return
     }
 
@@ -65,7 +65,7 @@ export async function pickOneDriveFile(): Promise<File> {
             throw new Error('OneDrive dosya bilgisi eksik')
           }
           const response = await fetch(downloadUrl)
-          if (!response.ok) throw new Error('OneDrive dosyasi indirilemedi')
+          if (!response.ok) throw new Error('OneDrive dosyası indirilemedi')
           const blob = await response.blob()
           resolve(
             new File([blob], item.name, {
@@ -73,10 +73,10 @@ export async function pickOneDriveFile(): Promise<File> {
             }),
           )
         } catch (error) {
-          reject(error instanceof Error ? error : new Error('OneDrive dosyasi alinamadi'))
+          reject(error instanceof Error ? error : new Error('OneDrive dosyası alınamadı'))
         }
       },
-      cancel: () => reject(new Error('OneDrive secimi iptal edildi')),
+      cancel: () => reject(new Error('OneDrive seçimi iptal edildi')),
       error: (error) => reject(new Error(error.message ?? 'OneDrive hatasi')),
     })
   })

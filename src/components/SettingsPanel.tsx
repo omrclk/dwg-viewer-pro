@@ -16,15 +16,15 @@ export function SettingsPanel({
   onPrivacy: () => void
 }) {
   return (
-    <div className="settings-panel" role="dialog" aria-label="Olcum ayarlari">
+    <div className="settings-panel" role="dialog" aria-label="Ölçüm ayarları">
       <div className="tool-panel-header">
         <strong>Hassasiyet</strong>
-        <button type="button" aria-label="Ayarlari kapat" onClick={onClose}>
+        <button type="button" aria-label="Ayarları kapat" onClick={onClose}>
           x
         </button>
       </div>
       <label className="settings-row">
-        <span>Ondalik basamak</span>
+        <span>Ondalık basamak</span>
         <input
           type="range"
           min={0}
@@ -46,7 +46,7 @@ export function SettingsPanel({
         </button>
       </label>
       <label className="settings-row">
-        <span>Metin yuksekligi</span>
+        <span>Metin yüksekliği</span>
         <input
           type="number"
           min={0.5}
@@ -85,7 +85,7 @@ export function SettingsPanel({
       </label>
       <div className="settings-links">
         <button type="button" onClick={onUpgrade}>
-          {pro ? 'Pro acik' : 'Pro kilidi'}
+          {pro ? 'Pro açık' : 'Pro kilidi'}
         </button>
         <button type="button" onClick={onPrivacy}>
           Gizlilik

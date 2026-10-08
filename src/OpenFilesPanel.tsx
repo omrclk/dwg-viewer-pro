@@ -76,21 +76,21 @@ export function OpenFilesPanel({
                 <Cloud size={16} style={{ color: provider.color }} />
                 <span>
                   <strong>{provider.label}</strong>
-                  <small>Hazir</small>
+                  <small>Hazır</small>
                 </span>
               </button>
             ))}
           </div>
         ) : (
           <p className="open-files-note">
-            Bulut hesaplari kapali. Anahtarlari .env icine yazinca Google Drive, OneDrive ve Dropbox burada gorunur. Android dosya secicisi Drive ve OneDrive dosyalarini zaten acabilir.
+            Bulut hesapları kapalı. Anahtarları .env içine yazınca Google Drive, OneDrive ve Dropbox burada görünür. Android dosya seçicisi Drive ve OneDrive dosyalarını zaten açabilir.
           </p>
         )}
       </section>
 
       <section className="open-files-section open-files-recent">
         <div className="open-files-recent-head">
-          <h3>Son acilanlar</h3>
+          <h3>Son açılanlar</h3>
           {recent.length > 0 && (
             <button
               type="button"
@@ -106,7 +106,7 @@ export function OpenFilesPanel({
           )}
         </div>
         <ul className="open-recent-list">
-          {recent.length === 0 && <li className="open-recent-empty">Henuz dosya acilmadi.</li>}
+          {recent.length === 0 && <li className="open-recent-empty">Henüz dosya açılmadı.</li>}
           {recent.map((entry) => (
             <li key={entry.id}>
               <button
@@ -114,7 +114,7 @@ export function OpenFilesPanel({
                 className="open-recent-row"
                 onClick={() => onOpenRecent(entry)}
                 disabled={busy || !entry.cached}
-                title={entry.cached ? 'Tekrar ac' : 'Onbellek yok, yeniden secin'}
+                title={entry.cached ? 'Tekrar aç' : 'Önbellek yok, yeniden seçin'}
               >
                 <HardDrive size={14} />
                 <span className="open-recent-meta">
@@ -128,7 +128,7 @@ export function OpenFilesPanel({
               <button
                 type="button"
                 className="open-recent-delete"
-                aria-label="Listeden kaldir"
+                aria-label="Listeden kaldır"
                 onClick={() => {
                   removeRecentFile(entry.id)
                   refreshRecent()

@@ -17,7 +17,7 @@ describe('entityPick', () => {
       ],
       5,
     )
-    expect(hit?.kind).toBe('Cizgi')
+    expect(hit?.kind).toBe('Çizgi')
     expect(hit?.layer).toBe('A-WALL')
   })
 

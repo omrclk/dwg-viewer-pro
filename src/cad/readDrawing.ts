@@ -32,13 +32,13 @@ export async function readDrawingBytes(bytes: Uint8Array, format: 'dwg' | 'dxf')
   } catch (error) {
     if (format === 'dxf' && looksLikeAsciiDxf(bytes)) {
       const fallback = parseDxfDocument(new TextDecoder().decode(bytes))
-      fallback.warnings.unshift('DXF, yerlesik okuyucu ile acildi.')
+      fallback.warnings.unshift('DXF, yerleşik okuyucu ile açıldı.')
       return fallback
     }
-    const message = error instanceof Error ? error.message : 'okunamadi'
+    const message = error instanceof Error ? error.message : 'okunamadı'
     if (format === 'dwg') {
-      throw new Error(`DWG acilamadi (${message}). R14 ve daha yeni dosyalar desteklenir. R12 DWG icin dosyayi DXF olarak kaydedin.`)
+      throw new Error(`DWG açılamadı (${message}). R14 ve daha yeni dosyalar desteklenir. R12 DWG için dosyayı DXF olarak kaydedin.`)
     }
-    throw new Error(`DXF acilamadi (${message}).`)
+    throw new Error(`DXF açılamadı (${message}).`)
   }
 }

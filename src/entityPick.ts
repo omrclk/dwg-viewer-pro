@@ -28,7 +28,7 @@ export function findNearestEntity(point: Point2, entities: DrawingEntity[], tole
       const dist = pointToSegmentDistance(point, { x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 })
       if (dist < bestDistance) {
         bestDistance = dist
-        best = { entity, layer: entity.layer, kind: 'Cizgi', distance: dist }
+        best = { entity, layer: entity.layer, kind: 'Çizgi', distance: dist }
       }
     }
 
@@ -66,7 +66,7 @@ export function findNearestEntity(point: Point2, entities: DrawingEntity[], tole
         const dist = pointToSegmentDistance(point, start, end)
         if (dist < bestDistance) {
           bestDistance = dist
-          best = { entity, layer: entity.layer, kind: 'Polyline', distance: dist }
+          best = { entity, layer: entity.layer, kind: 'Çoklu çizgi', distance: dist }
         }
       })
     }

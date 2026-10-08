@@ -79,5 +79,5 @@ export function CadCanvas({
     })
   }, [bounds, cameraPanX, cameraPanY, cameraScale, dpr, entities, hiddenLayers, index, showLineweights, theme, viewWidth, viewHeight])
 
-  return <canvas ref={canvasRef} data-dpr={dpr} className="cad-canvas" aria-label="Cizim" />
+  return <canvas ref={canvasRef} data-dpr={dpr} className="cad-canvas" aria-label="Çizim" />
 }

@@ -61,9 +61,14 @@ export function MeasureOverlay({
         })()
       : ''
 
+  const pointLabel = `${draftPoints.length}/${mode === 'area' ? '3+' : requiredPoints}`
+
   return (
     <div className="measure-overlay" aria-live="polite">
-      <div className="measure-hint">{hint}</div>
+      <div className="measure-hint">
+        <span>{hint}{mode === 'area' && draftPoints.length >= 3 ? ' · Bitirmek için çift dokunun' : ''}</span>
+        <span className="measure-hint-count">{pointLabel}</span>
+      </div>
       <svg className="measure-svg" viewBox={`0 0 ${dxfTransform?.viewWidth ?? VIEW_BOX.width} ${dxfTransform?.viewHeight ?? VIEW_BOX.height}`} aria-hidden>
         {viewPoints.length > 1 && mode !== 'point' && (
           <polyline className="measure-draft-line" points={pointsToPolyline(viewPoints)} />
@@ -104,10 +109,6 @@ export function MeasureOverlay({
           </g>
         )}
       </svg>
-      <div className="measure-overlay-meta">
-        {draftPoints.length}/{mode === 'area' ? '3+' : requiredPoints} nokta
-        {mode === 'area' && draftPoints.length >= 3 && <span> · Bitirmek icin cift tikla</span>}
-      </div>
     </div>
   )
 }

@@ -17,7 +17,7 @@ export function cloudProviderStatus() {
 export async function pickFileFromSource(source: FileSource): Promise<File> {
   if (source === 'device') {
     const file = await pickDeviceFile()
-    if (!file) throw new Error('Dosya secilmedi')
+    if (!file) throw new Error('Dosya seçilmedi')
     return file
   }
 

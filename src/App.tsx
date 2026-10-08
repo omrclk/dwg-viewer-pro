@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import {
   ArrowUpToLine,
@@ -157,12 +157,12 @@ function countEntitiesByLayer(entities: DrawingEntity[]) {
 type ViewportState = { scale: number; panX: number; panY: number }
 
 const MEASURE_HINTS: Record<Exclude<MeasureMode, null>, string> = {
-  distance: 'Mesafe icin iki nokta secin',
-  area: 'Alan icin kose noktalari secin, bitirmek icin cift tikla',
-  angle: 'Aci icin: baslangic, tepe, bitis noktasi',
-  arc: 'Yay: merkez, baslangic, bitis noktasi',
-  point: 'Koordinat okumak icin nokta secin',
-  calibration: 'Kalibrasyon: bilinen mesafenin iki ucunu secin',
+  distance: 'Mesafe için iki nokta seçin',
+  area: 'Alan için köşe noktaları seçin, bitirmek için çift dokunun',
+  angle: 'Açı için: başlangıç, tepe, bitiş noktası',
+  arc: 'Yay: merkez, başlangıç, bitiş noktası',
+  point: 'Koordinat okumak için nokta seçin',
+  calibration: 'Kalibrasyon: bilinen mesafenin iki uçunu seçin',
 }
 
 function clampScale(scale: number) {
@@ -182,7 +182,7 @@ function fileFromPayload(payload: ExternalFilePayload) {
     const slice = 256 * 1024
     for (let offset = 0; offset < payload.size; offset += slice) {
       const encoded = window.DwgNative.pullChunk(offset, Math.min(slice, payload.size - offset))
-      if (!encoded) throw new Error('Dosya parcasi okunamadi.')
+      if (!encoded) throw new Error('Dosya parçası okunamadı.')
       parts.push(bytesFromBase64(encoded))
     }
     window.DwgNative.clearPending?.()
@@ -190,7 +190,7 @@ function fileFromPayload(payload: ExternalFilePayload) {
       type: payload.mimeType || 'application/octet-stream',
     })
   }
-  if (!payload.base64) throw new Error('Dosya verisi alinamadi.')
+  if (!payload.base64) throw new Error('Dosya verisi alınamadı.')
   return new File([bytesFromBase64(payload.base64)], payload.name || 'paylasilan-cizim.dwg', {
     type: payload.mimeType || 'application/octet-stream',
   })
@@ -470,7 +470,7 @@ function DrawingViewport({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
-      aria-label="Cizim alani: surukleyerek kaydir, tekerlek veya iki parmakla yakinlastir"
+      aria-label="Çizim alanı: sürükleyerek kaydırın, tekerlek veya iki parmakla yakınlaştırın"
     >
       <div
         className={`viewport-transform${delta ? ' is-gesturing' : ''}`}
@@ -713,6 +713,7 @@ function App() {
   const loadedWorkspaceKey = useRef('')
   const pressTimer = useRef<number | null>(null)
   const pressMenu = useRef(false)
+  const fingerDown = useRef(false)
   const finishedDrawId = useRef('')
   const pendingCallout = useRef<string | null>(null)
   const moveHit = useRef<MarkupHit | null>(null)
@@ -736,6 +737,7 @@ function App() {
   const layerSnapshotRef = useRef<Set<string> | null>(null)
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(() => new Set())
   const [measurePanelOpen, setMeasurePanelOpen] = useState(false)
+  const [resultsExpanded, setResultsExpanded] = useState(false)
   const [measureOverlaysHidden, setMeasureOverlaysHidden] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
@@ -881,8 +883,38 @@ function App() {
 
   const notify = useCallback((message: string) => {
     setNotice(message)
-    window.setTimeout(() => setNotice((current) => (current === message ? '' : current)), 2200)
+    window.setTimeout(() => setNotice((current) => (current === message ? '' : current)), 1100)
   }, [])
+
+  const viewerRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const root = viewerRef.current
+    if (!root) return
+    const chrome = Number.parseFloat(getComputedStyle(root).getPropertyValue('--fv-chrome-bottom')) || 54
+    const view = root.getBoundingClientRect()
+    let lift = 0
+    for (const el of root.querySelectorAll(
+      '.measure-results-panel, .layers-panel, .settings-panel, .comments-panel, .color-panel, .snap-panel',
+    )) {
+      const rect = el.getBoundingClientRect()
+      if (rect.height < 8 || rect.width < 8) continue
+      const needed = view.bottom - rect.top - chrome - 4
+      if (needed > lift) lift = needed
+    }
+    root.style.setProperty('--toast-lift', `${Math.max(0, Math.round(lift))}px`)
+  }, [
+    screen,
+    notice,
+    measurePanelOpen,
+    resultsExpanded,
+    layersPanelOpen,
+    settingsPanelOpen,
+    commentsPanelOpen,
+    colorPanelOpen,
+    activeMeasureMode,
+    activeCategory,
+    menuOpen,
+  ])
 
   const snapTargets = useMemo(() => {
     if (coordMode === 'dxf') return collectSnapTargets(visibleDxfEntities, appSettings.snap)
@@ -929,7 +961,7 @@ function App() {
     const next = { ...appSettings, performanceMode: nextMode as AppSettings['performanceMode'] }
     setAppSettings(next)
     saveSettings(next)
-    notify(nextMode === 'low' ? 'Dusuk performans modu acildi.' : 'Yuksek kalite modu acildi.')
+    notify(nextMode === 'low' ? 'Düşük performans modu açıldı.' : 'Yüksek kalite modu açıldı.')
   }
 
   useEffect(() => {
@@ -943,6 +975,7 @@ function App() {
     setHiddenLayers(new Set(saved?.hiddenLayers ?? []))
     setLayersPanelOpen(false)
     setMeasurePanelOpen(false)
+    setResultsExpanded(false)
     setSettingsPanelOpen(false)
     setCommentsPanelOpen(false)
     setColorPanelOpen(false)
@@ -1040,8 +1073,7 @@ function App() {
     editTargetRef.current = null
     setActiveDrawTool(tool)
     setActiveDrawActionId(actionId)
-    if (actionId.startsWith('ann-')) setActiveCategory('annotation')
-    else if (actionId.startsWith('draw-')) setActiveCategory('draw')
+    setActiveCategory(null)
     setDrawModeOpen(true)
     setMeasurePanelOpen(false)
     setLayersPanelOpen(false)
@@ -1059,7 +1091,7 @@ function App() {
     closeInteractionModes()
     setActiveEditTool(tool)
     setActiveEditActionId(actionId)
-    setActiveCategory('edit')
+    setActiveCategory(null)
     editTargetRef.current = null
     notify(`${EDIT_LABELS[tool]}: ${EDIT_HINTS[tool]}`)
     return true
@@ -1069,11 +1101,11 @@ function App() {
     closeInteractionModes()
     setMarkupPlaceMode(mode)
     setActiveMarkupActionId(actionId)
-    setActiveCategory('annotation')
-    if (mode === 'number') notify('Numaralandirma: konuma dokun.')
-    if (mode === 'audio') notify('Ses notu: konuma dokun.')
-    if (mode === 'video') notify('Video notu: konuma dokun.')
-    if (mode === 'image') notify('Goruntu: konuma dokun.')
+    setActiveCategory(null)
+    if (mode === 'number') notify('Numaralandırma: konuma dokunun.')
+    if (mode === 'audio') notify('Ses notu: konuma dokunun.')
+    if (mode === 'video') notify('Video notu: konuma dokunun.')
+    if (mode === 'image') notify('Görüntü: konuma dokunun.')
     return true
   }
 
@@ -1092,9 +1124,7 @@ function App() {
     setDraftPoints([])
     setSnapPreview(null)
     if (mode && !togglingOff) {
-      const category =
-        actionId?.startsWith('dim-') ? 'dimension' : actionId === 'draw-divide' ? 'draw' : 'measure'
-      setActiveCategory(category)
+      setActiveCategory(null)
       setLayersPanelOpen(false)
       setSettingsPanelOpen(false)
       setCommentsPanelOpen(false)
@@ -1136,7 +1166,7 @@ function App() {
     if (mode === 'calibration' && points.length >= 2) {
       const drawingDistance = distance(points[0], points[1])
       const realRaw = window.prompt(
-        `Cizim mesafesi ${drawingDistance.toFixed(3)} birim. Gercek mesafe?`,
+        `Çizim mesafesi ${drawingDistance.toFixed(3)} birim. Gerçek mesafe?`,
         String(drawingDistance * unitsPerDrawingUnit || 1),
       )
       const unitRaw = window.prompt('Birim (m, mm, cm, ft)', unitLabel) ?? unitLabel
@@ -1152,7 +1182,7 @@ function App() {
 
     if (!pro && measureRecords.length >= FREE_MEASURE_LIMIT) {
       setUpgradeOpen(true)
-      notify(`Ucretsiz planda ${FREE_MEASURE_LIMIT} olcum siniri doldu.`)
+      notify(`Ücretsiz planda ${FREE_MEASURE_LIMIT} ölçüm sınırı doldu.`)
       return
     }
 
@@ -1164,7 +1194,9 @@ function App() {
     if (record) {
       setMeasureRecords((current) => [...current, record])
       setRedoMeasureRecords([])
+      setResultsExpanded(false)
       setMeasurePanelOpen(true)
+      setLoupe(null)
     }
     if (mode !== 'area' && measureSession === 'normal') {
       setActiveMeasureMode(null)
@@ -1175,6 +1207,7 @@ function App() {
   const handleMeasurePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activeMeasureMode || !contentRef.current) return
     event.stopPropagation()
+    fingerDown.current = true
     setLoupe({ x: event.clientX, y: event.clientY })
 
     if (activeMeasureMode === 'area' && event.detail === 2) {
@@ -1198,7 +1231,7 @@ function App() {
       const entities = visibleDxfEntities.length ? visibleDxfEntities : []
       const hit = findNearestEntity(point, entities, tolerance)
       if (!hit) {
-        notify('Yakin varlik bulunamadi.')
+        notify('Yakın varlık bulunamadı.')
         return
       }
 
@@ -1216,7 +1249,7 @@ function App() {
         },
       ])
       setMeasurePanelOpen(true)
-      notify(`${hit.kind} secildi (${hit.layer}).`)
+      notify(`${hit.kind} seçildi (${hit.layer}).`)
       return
     }
 
@@ -1252,6 +1285,7 @@ function App() {
   const closeSubPanels = () => {
     setLayersPanelOpen(false)
     setMeasurePanelOpen(false)
+    setResultsExpanded(false)
     setSettingsPanelOpen(false)
     setCommentsPanelOpen(false)
     setColorPanelOpen(false)
@@ -1261,34 +1295,36 @@ function App() {
   const handleFastViewSubAction = (actionId: string) => {
     if (VIP_ACTIONS.has(actionId) && !pro) {
       setUpgradeOpen(true)
-      notify('Bu arac Pro kilidinde.')
+      notify('Bu araç Pro kilidinde.')
       return
     }
     if (actionId === 'ann-text' || actionId === 'draw-text') {
-      const text = window.prompt('Cizime eklenecek metin')
+      const text = window.prompt('Çizime eklenecek metin')
       const trimmed = text?.trim()
       if (!trimmed) return
       setPendingText(trimmed)
       setMarkupPlaceMode(null)
       setDrawModeOpen(false)
-      notify('Metni yerlestirmek icin cizime dokunun.')
+      setActiveCategory(null)
+      notify('Metni yerleştirmek için çizime dokunun.')
       return
     }
     if (actionId === 'layer-list') {
+      setActiveCategory(null)
       setLayersPanelOpen(true)
-      notify('Katman listesi acildi.')
+      notify('Katman listesi açıldı.')
       return
     }
     if (actionId === 'layer-all-on') {
       showAllLayers()
-      notify('Tum katmanlar acildi.')
+      notify('Tüm katmanlar açıldı.')
       return
     }
     if (actionId === 'layer-off') {
       setLayersPanelOpen(true)
       const target = layerList.find((layer) => !hiddenLayers.has(layer))
       if (target) toggleLayer(target)
-      notify(target ? `${target} katmani kapatildi.` : 'Kapatilacak katman yok.')
+      notify(target ? `${target} katmanı kapatıldı.` : 'Kapatılacak katman yok.')
       return
     }
     if (actionId === 'layer-isolate') {
@@ -1296,17 +1332,17 @@ function App() {
       if (!target) return
       layerSnapshotRef.current = new Set(hiddenLayers)
       setHiddenLayers(new Set(layerList.filter((layer) => layer !== target)))
-      notify(`${target} katmani izole edildi.`)
+      notify(`${target} katmanı izole edildi.`)
       return
     }
     if (actionId === 'layer-previous') {
       if (!layerSnapshotRef.current) {
-        notify('Onceki katman durumu yok.')
+        notify('Önceki katman durumu yok.')
         return
       }
       setHiddenLayers(new Set(layerSnapshotRef.current))
       layerSnapshotRef.current = null
-      notify('Onceki katman durumu yuklendi.')
+      notify('Önceki katman durumu yüklendi.')
       return
     }
     if (actionId === 'layer-new') {
@@ -1314,7 +1350,7 @@ function App() {
       const trimmed = name?.trim()
       if (!trimmed) return
       setCustomLayers((current) => [...new Set([...current, trimmed])])
-      notify(`${trimmed} katmani eklendi.`)
+      notify(`${trimmed} katmanı eklendi.`)
       return
     }
     if (actionId === 'layer-default') {
@@ -1322,7 +1358,7 @@ function App() {
       const trimmed = name?.trim()
       if (!trimmed) return
       setDefaultLayer(trimmed)
-      notify(`${trimmed} varsayilan katman yapildi.`)
+      notify(`${trimmed} varsayılan katman yapıldı.`)
       return
     }
 
@@ -1351,49 +1387,53 @@ function App() {
       return
     }
     if (actionId === 'measure-results') {
+      setActiveCategory(null)
+      setResultsExpanded(true)
       setMeasurePanelOpen(true)
-      notify('Olcum sonuclari listelendi.')
+      notify('Ölçüm sonuçları listelendi.')
       return
     }
     if (actionId === 'measure-count') {
-      notify(`${measureRecords.length} olcum kaydi var.`)
+      setActiveCategory(null)
+      setResultsExpanded(true)
       setMeasurePanelOpen(true)
+      notify(`${measureRecords.length} ölçüm kaydı var.`)
       return
     }
     if (actionId === 'measure-precision') {
       setSettingsPanelOpen(true)
-      notify('Hassasiyet ayarlari acildi.')
+      notify('Hassasiyet ayarları açıldı.')
       return
     }
     if (actionId === 'measure-continuous') {
       selectMeasureMode('distance', 'continuous', actionId)
-      notify('Surekli olcum: noktalar arasi mesafeler zincirlenir.')
+      notify('Sürekli ölçüm: noktalar arası mesafeler zincirlenir.')
       return
     }
     if (actionId === 'measure-facade') {
       selectMeasureMode('area', 'normal', actionId)
-      notify('Cephe olcumu: alan icin kose noktalari secin.')
+      notify('Cephe ölçümü: alan için köşe noktaları seçin.')
       return
     }
     if (actionId === 'measure-batch') {
       selectMeasureMode('distance', 'batch', actionId)
-      notify('Toplu olcum: her iki noktada bir kayit olusturulur.')
+      notify('Toplu ölçüm: her iki noktada bir kayıt oluşturulur.')
       return
     }
     if (actionId === 'measure-entity') {
       selectMeasureMode('point', 'entity', actionId)
-      notify('Varlik: cizim uzerinde bir nesne secin.')
+      notify('Varlık: çizim üzerinde bir nesne seçin.')
       return
     }
 
     if (actionId === 'dim-linear') {
       selectMeasureMode('distance', 'normal', actionId)
-      notify('Dogrusal boyut olcumu basladi.')
+      notify('Doğrusal boyut ölçümü başladı.')
       return
     }
     if (actionId === 'dim-aligned') {
       selectMeasureMode('distance', 'normal', actionId)
-      notify('Hizali boyut olcumu basladi.')
+      notify('Hizalı boyut ölçümü başladı.')
       return
     }
     if (actionId === 'dim-angular') {
@@ -1406,12 +1446,12 @@ function App() {
     }
     if (actionId === 'dim-radius') {
       selectMeasureMode('distance', 'radius', actionId)
-      notify('Radius olcumu: merkez ve kenar noktasi secin.')
+      notify('Yarıçap ölçümü: merkez ve kenar noktası seçin.')
       return
     }
     if (actionId === 'dim-diameter') {
       selectMeasureMode('distance', 'diameter', actionId)
-      notify('Cap olcumu: iki uç nokta secin.')
+      notify('Çap ölçümü: iki uç nokta seçin.')
       return
     }
 
@@ -1475,14 +1515,12 @@ function App() {
     setActiveCategory((current) => (current === category ? null : category))
     closeSubPanels()
     setColorModalOpen(false)
-
-    if (category === 'layer') {
-      setLayersPanelOpen(true)
-    }
   }
 
   const handleTopBarAction = (action: 'save' | 'undo' | 'redo' | 'layout' | 'zoomWindow' | 'fit' | 'menu') => {
     if (action === 'menu') {
+      setMeasurePanelOpen(false)
+      setResultsExpanded(false)
       setMenuOpen((open) => !open)
       return
     }
@@ -1491,23 +1529,23 @@ function App() {
       if (layouts.length < 2) {
         if (document.fullscreenElement) {
           void document.exitFullscreen()
-          notify('Tam ekran kapandi.')
+          notify('Tam ekran kapandı.')
         } else {
           void document.documentElement.requestFullscreen?.()
-          notify('Tam ekran acildi.')
+          notify('Tam ekran açıldı.')
         }
         return
       }
       const current = openedFile?.layoutName ?? 'Model'
       const index = layouts.findIndex((layout) => layout.name === current)
       const next = layouts[(index + 1) % layouts.length]
-      setOpenedFile((file) => (file ? { ...file, entities: next.entities, layoutName: next.name, summary: `${next.entities.length} varlik · ${next.name}` } : file))
-      notify(`${next.name} duzeni acildi.`)
+      setOpenedFile((file) => (file ? { ...file, entities: next.entities, layoutName: next.name, summary: `${next.entities.length} varlık · ${next.name}` } : file))
+      notify(`${next.name} düzeni açıldı.`)
       return
     }
     if (action === 'zoomWindow') {
       setZoomWindowMode((current) => !current)
-      notify(zoomWindowMode ? 'Pencere yakinlastirma kapandi.' : 'Yakinlastirilacak alani surukleyin.')
+      notify(zoomWindowMode ? 'Pencere yakınlaştırma kapandı.' : 'Yakınlaştırılacak alanı sürükleyin.')
       return
     }
     handleToolbarAction(action)
@@ -1516,7 +1554,7 @@ function App() {
   const shareDrawing = async (kind: 'png' | 'pdf') => {
     const entities = openedFile?.entities
     if (!entities?.length) {
-      notify('Disa aktarilacak cizim yok.')
+      notify('Dışa aktarılacak çizim yok.')
       return
     }
     try {
@@ -1525,9 +1563,9 @@ function App() {
       const markup = { sketches: sketchShapes, measures: measureRecords, notes: textNotes }
       if (kind === 'pdf') await exportDrawingPdf(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights, markup)
       else await exportDrawingPng(entities, hiddenLayers, appSettings.theme, base, watermark, appSettings.showLineweights, markup)
-      notify(kind === 'pdf' ? 'PDF paylasildi.' : 'Gorsel paylasildi.')
+      notify(kind === 'pdf' ? 'PDF paylaşıldı.' : 'Görsel paylaşıldı.')
     } catch (exportError) {
-      notify(exportError instanceof Error ? exportError.message : 'Disa aktarma basarisiz.')
+      notify(exportError instanceof Error ? exportError.message : 'Dışa aktarma başarısız.')
     }
   }
 
@@ -1539,10 +1577,10 @@ function App() {
       setPro(entitlement.pro)
       if (entitlement.pro) {
         setUpgradeOpen(false)
-        notify('Pro acildi.')
+        notify('Pro açıldı.')
       }
     } catch (purchaseError) {
-      setUpgradeError(purchaseError instanceof Error ? purchaseError.message : 'Satin alma tamamlanamadi.')
+      setUpgradeError(purchaseError instanceof Error ? purchaseError.message : 'Satın alma tamamlanamadı.')
     } finally {
       setUpgradeBusy(false)
     }
@@ -1554,10 +1592,10 @@ function App() {
     try {
       const entitlement = await restoreProPurchase()
       setPro(entitlement.pro)
-      notify(entitlement.pro ? 'Satin alma geri yuklendi.' : 'Geri yuklenecek satin alma yok.')
+      notify(entitlement.pro ? 'Satın alma geri yüklendi.' : 'Geri yüklenecek satın alma yok.')
       if (entitlement.pro) setUpgradeOpen(false)
     } catch (restoreError) {
-      setUpgradeError(restoreError instanceof Error ? restoreError.message : 'Geri yukleme basarisiz.')
+      setUpgradeError(restoreError instanceof Error ? restoreError.message : 'Geri yükleme başarısız.')
     } finally {
       setUpgradeBusy(false)
     }
@@ -1565,20 +1603,20 @@ function App() {
 
   const openSample = async (format: 'dwg' | 'dxf') => {
     setFileBusy(true)
-    setOpenStatus('Ornek plan hazirlaniyor...')
+    setOpenStatus('Örnek plan hazırlanıyor...')
     try {
       if (format === 'dwg') {
         const { sampleDwgBytes } = await import('./cad/samplePlan')
         const bytes = sampleDwgBytes()
         const file = new File([bytes], 'ornek-plan.dwg', { type: 'application/octet-stream' })
-        await openFromFile(file, 'device', false, 'Ornekler > ornek-plan.dwg')
+        await openFromFile(file, 'device', false, 'Örnekler > örnek-plan.dwg')
         return
       }
       const { SAMPLE_RICH_DXF } = await import('./cad/samplePlan')
       const file = new File([SAMPLE_RICH_DXF], 'ornek-plan.dxf', { type: 'application/dxf' })
-      await openFromFile(file, 'device', false, 'Ornekler > ornek-plan.dxf')
+      await openFromFile(file, 'device', false, 'Örnekler > örnek-plan.dxf')
     } catch (sampleError) {
-      setError(sampleError instanceof Error ? sampleError.message : 'Ornek cizim acilamadi.')
+      setError(sampleError instanceof Error ? sampleError.message : 'Örnek çizim açılamadı.')
     } finally {
       setFileBusy(false)
     }
@@ -1607,6 +1645,8 @@ function App() {
     const rows = subMenuRows(activeCategory)
     return `${54 + rows * 62 + 22}px`
   }, [activeCategory])
+  const resultsLift = measurePanelOpen ? (resultsExpanded ? 280 : 64) : 0
+  const snapLift = activeMeasureMode && !resultsExpanded ? 96 : 0
 
   const applyOpenResult = (result: Awaited<ReturnType<typeof buildOpenedFile>>) => {
     if (result.ok === false) {
@@ -1635,7 +1675,7 @@ function App() {
 
   const openFromFile = async (file: File, source: FileSource, skipRecent = false, sourcePath?: string) => {
     setFileBusy(true)
-    setOpenStatus('Dosya aciliyor...')
+    setOpenStatus('Dosya açılıyor...')
     try {
       const result = await buildOpenedFile(file, source, { skipRecent })
       applyOpenResult(result)
@@ -1643,7 +1683,7 @@ function App() {
         setOpenedPath(sourcePath || `${sourceLabel(source)} > ${file.name}`)
       }
     } catch {
-      setError('Dosya acilirken hata olustu.')
+      setError('Dosya açılırken hata oluştu.')
     } finally {
       setFileBusy(false)
     }
@@ -1662,9 +1702,9 @@ function App() {
         const file = fileFromPayload(detail)
         await openFromFile(file, 'device', false, detail.sourcePath || `Paylasim > ${file.name}`)
         if (detail.id) lastExternalFileIdRef.current = detail.id
-        notify('Paylasilan dosya acildi.')
+        notify('Paylaşılan dosya açıldı.')
       } catch (openError) {
-        const message = openError instanceof Error ? openError.message : 'Dosya acilamadi.'
+        const message = openError instanceof Error ? openError.message : 'Dosya açılamadı.'
         setOpenedFile(null)
         setScreen('viewer')
         setError(message)
@@ -1675,7 +1715,7 @@ function App() {
       const detail = (event as CustomEvent<ExternalFilePayload>).detail
         setOpenedFile(null)
         setScreen('viewer')
-        setError(detail?.message || 'Dosya acilamadi.')
+        setError(detail?.message || 'Dosya açılamadı.')
     }
 
     window.addEventListener('dwg-viewer-open-file', handleExternalFile)
@@ -1785,7 +1825,7 @@ function App() {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    await openFromFile(file, 'device', false, `Telefon dosyalari > ${file.name}`)
+    await openFromFile(file, 'device', false, `Telefon dosyaları > ${file.name}`)
   }
 
   const handlePickDevice = async () => {
@@ -1793,11 +1833,11 @@ function App() {
     setOpenStatus('')
     try {
       const file = await pickFileFromSource('device')
-      await openFromFile(file, 'device', false, `Telefon dosyalari > ${file.name}`)
+      await openFromFile(file, 'device', false, `Telefon dosyaları > ${file.name}`)
     } catch (pickError) {
-      const message = pickError instanceof Error ? pickError.message : 'Dosya secilemedi'
-      if (message.includes('secilmedi') || message.includes('iptal')) {
-        setOpenStatus('Secim iptal edildi. Yeniden deneyebilirsiniz.')
+      const message = pickError instanceof Error ? pickError.message : 'Dosya seçilemedi'
+      if (message.toLocaleLowerCase('tr').includes('seçilmedi') || message.toLocaleLowerCase('tr').includes('secilmedi') || message.toLocaleLowerCase('tr').includes('iptal')) {
+        setOpenStatus('Seçim iptal edildi. Yeniden deneyebilirsiniz.')
         setOpenPanelOpen(true)
       } else setError(message)
     } finally {
@@ -1807,16 +1847,16 @@ function App() {
 
   const handlePickCloud = async (provider: CloudProvider) => {
     setFileBusy(true)
-    setOpenStatus(`${provider} baglaniyor...`)
+    setOpenStatus(`${provider} bağlanıyor...`)
     setError('')
     try {
       const file = await pickFileFromSource(provider)
       await openFromFile(file, provider, false, `${sourceLabel(provider)} > ${file.name}`)
     } catch (pickError) {
-      const message = pickError instanceof Error ? pickError.message : 'Bulut dosyasi acilamadi'
+      const message = pickError instanceof Error ? pickError.message : 'Bulut dosyası açılamadı'
       if (message.includes('.env') || message.includes('API')) {
         setOpenStatus(message)
-      } else if (!message.includes('iptal') && !message.includes('secilmedi')) {
+      } else if (!message.toLocaleLowerCase('tr').includes('iptal') && !message.toLocaleLowerCase('tr').includes('seçilmedi') && !message.toLocaleLowerCase('tr').includes('secilmedi')) {
         setError(message)
       }
     } finally {
@@ -1825,7 +1865,7 @@ function App() {
   }
 
   const handleMeasurePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activeMeasureMode || !contentRef.current) return
+    if (!activeMeasureMode || !contentRef.current || !fingerDown.current) return
     if (snapRafRef.current) return
     setLoupe({ x: event.clientX, y: event.clientY })
     snapRafRef.current = window.requestAnimationFrame(() => {
@@ -1914,28 +1954,28 @@ function App() {
   const undoEdit = () => {
     if (draftSketchShape) {
       setDraftSketchShape(null)
-      notify('Cizim taslagi silindi.')
+      notify('Çizim taslağı silindi.')
       return
     }
     if (draftPoints.length) {
       setDraftPoints((current) => current.slice(0, -1))
-      notify('Son olcum noktasi geri alindi.')
+      notify('Son ölçüm noktası geri alındı.')
       return
     }
     const previous = pastEdits.current.pop()
     if (!previous) {
-      notify('Geri alinacak islem yok.')
+      notify('Geri alınacak işlem yok.')
       return
     }
     futureEdits.current.push(lastEditSnap.current)
     applyEditSnap(previous)
-    notify('Geri alindi.')
+    notify('Geri alındı.')
   }
 
   const redoEdit = () => {
     const next = futureEdits.current.pop()
     if (!next) {
-      notify('Yinelenecek islem yok.')
+      notify('Yinelenecek işlem yok.')
       return
     }
     pastEdits.current.push(lastEditSnap.current)
@@ -1949,6 +1989,7 @@ function App() {
     if (!point) return
 
     event.stopPropagation()
+    fingerDown.current = true
     setLoupe({ x: event.clientX, y: event.clientY })
     const pressX = event.clientX
     const pressY = event.clientY
@@ -1995,7 +2036,7 @@ function App() {
   }
 
   const handleDrawPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!drawModeOpen || !draftSketchShape) return
+    if (!drawModeOpen || !draftSketchShape || !fingerDown.current) return
     window.clearTimeout(pressTimer.current ?? undefined)
     pressTimer.current = null
     setLoupe({ x: event.clientX, y: event.clientY })
@@ -2023,6 +2064,7 @@ function App() {
   }
 
   const handleDrawPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    fingerDown.current = false
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setLoupe(null)
     window.clearTimeout(pressTimer.current ?? undefined)
@@ -2102,11 +2144,11 @@ function App() {
     if (activeEditTool === 'trim') {
       const hit = findNearestSketchShape(sketchShapes, point, tolerance)
       if (!hit) {
-        notify('Kirpilacak cizim bulunamadi.')
+        notify('Kırpılacak çizim bulunamadı.')
         return
       }
       setSketchShapes((current) => trimSketchShape(current, hit.id))
-      notify('Secili cizim silindi.')
+      notify('Seçili çizim silindi.')
       return
     }
 
@@ -2114,7 +2156,7 @@ function App() {
       if (!editTargetRef.current) {
         const hit = findNearestSketchShape(sketchShapes, point, tolerance)
         if (!hit || hit.kind !== 'line') {
-          notify('Uzatilacak cizgi secin.')
+          notify('Uzatılacak çizgi seçin.')
           return
         }
         editTargetRef.current = hit
@@ -2125,7 +2167,7 @@ function App() {
       if (!extended) return
       setSketchShapes((current) => current.map((shape) => (shape.id === extended.id ? extended : shape)))
       editTargetRef.current = null
-      notify('Cizgi uzatildi.')
+      notify('Çizgi uzatıldı.')
       return
     }
 
@@ -2133,25 +2175,25 @@ function App() {
       if (!editTargetRef.current) {
         const hit = findNearestSketchShape(sketchShapes, point, tolerance)
         if (!hit) {
-          notify('Offset icin sekil secin.')
+          notify('Öteleme için şekil seçin.')
           return
         }
         editTargetRef.current = hit
-        notify('Offset yonu icin dokunun.')
+        notify('Öteleme yönü için dokunun.')
         return
       }
       const offset = offsetSketchShape(editTargetRef.current, point)
       if (!offset) return
       setSketchShapes((current) => [...current, offset])
       editTargetRef.current = null
-      notify('Offset kopyasi olusturuldu.')
+      notify('Öteleme kopyası oluşturuldu.')
       return
     }
 
     if (activeEditTool === 'fillet' || activeEditTool === 'chamfer') {
       const hit = findNearestSketchShape(sketchShapes, point, tolerance)
       if (!hit || hit.kind !== 'rect') {
-        notify('Dikdortgen secin.')
+        notify('Dikdörtgen seçin.')
         return
       }
       const size = Math.max(4, distance(hit.points[0], point) / 4)
@@ -2159,7 +2201,7 @@ function App() {
         activeEditTool === 'fillet' ? filletSketchShape(hit, size) : chamferSketchShape(hit, size)
       if (!next) return
       setSketchShapes((current) => current.map((shape) => (shape.id === next.id ? next : shape)))
-      notify(activeEditTool === 'fillet' ? 'Kose yuvarlatildi.' : 'Kose olugu uygulandi.')
+      notify(activeEditTool === 'fillet' ? 'Köşe yuvarlatıldı.' : 'Köşe pahı uygulandı.')
     }
   }
 
@@ -2206,7 +2248,7 @@ function App() {
         },
         ...current,
       ])
-      notify(markupPlaceMode === 'audio' ? 'Ses notu yerlestirildi.' : 'Video notu yerlestirildi.')
+      notify(markupPlaceMode === 'audio' ? 'Ses notu yerleştirildi.' : 'Video notu yerleştirildi.')
       return
     }
 
@@ -2222,7 +2264,7 @@ function App() {
           imageUrl: pendingImageUrl,
         },
       ])
-      notify('Goruntu yerlestirildi.')
+      notify('Görüntü yerleştirildi.')
     }
   }
 
@@ -2241,7 +2283,7 @@ function App() {
     if (!file) return
     setPendingAudioUrl(URL.createObjectURL(file))
     selectMarkupPlace('ann-audio', 'audio')
-    notify('Ses notunu yerlestirmek icin cizime dokunun.')
+    notify('Ses notunu yerleştirmek için çizime dokunun.')
   }
 
   const handleVideoPick = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2250,7 +2292,7 @@ function App() {
     if (!file) return
     setPendingVideoUrl(URL.createObjectURL(file))
     selectMarkupPlace('ann-video', 'video')
-    notify('Video notunu yerlestirmek icin cizime dokunun.')
+    notify('Video notunu yerleştirmek için çizime dokunun.')
   }
 
   const placeTextNote = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2269,7 +2311,7 @@ function App() {
       },
     ])
     setPendingText(null)
-    notify('Metin yerlestirildi.')
+    notify('Metin yerleştirildi.')
   }
 
   const updateAppSettings = (next: AppSettings) => {
@@ -2279,7 +2321,7 @@ function App() {
 
   const handleOpenRecent = async (entry: RecentFileEntry) => {
     setFileBusy(true)
-    setOpenStatus('Son dosya yukleniyor...')
+    setOpenStatus('Son dosya yükleniyor...')
     try {
       const file = await loadCachedFile(entry.id)
       if (!file) {
@@ -2290,7 +2332,7 @@ function App() {
       }
       await openFromFile(file, entry.source, true, `Son dosyalar > ${entry.name}`)
     } catch {
-      setError('Son acilan dosya yuklenemedi.')
+      setError('Son açılan dosya yüklenemedi.')
     } finally {
       setFileBusy(false)
     }
@@ -2298,7 +2340,7 @@ function App() {
 
   const fileInfoText = () => {
     if (!openedFile) {
-      return `Demo cizim\nKatman: ${layerList.length}\nOlcum: ${measureRecords.length}`
+      return `Demo çizim\nKatman: ${layerList.length}\nÖlçüm: ${measureRecords.length}`
     }
 
     return [
@@ -2309,8 +2351,8 @@ function App() {
       `Boyut: ${formatBytes(openedFile.size)}`,
       openedFile.entities ? `Nesne: ${openedFile.entities.length}` : undefined,
       openedFile.message,
-      `Surum: ${APP_VERSION}`,
-      `Olcum: ${measureRecords.length}`,
+      `Sürüm: ${APP_VERSION}`,
+      `Ölçüm: ${measureRecords.length}`,
     ].filter(Boolean).join('\n')
   }
 
@@ -2344,12 +2386,12 @@ function App() {
   const printDrawing = () => {
     if (window.DwgNative?.print) {
       window.DwgNative.print()
-      notify('Yazdirma ekrani aciliyor.')
+      notify('Yazdırma ekranı açılıyor.')
       return
     }
 
     window.print()
-    notify('Yazdirma komutu gonderildi.')
+    notify('Yazdırma komutu gönderildi.')
   }
 
   const addComment = () => {
@@ -2413,13 +2455,13 @@ function App() {
     } else if (action === 'export') {
       setExportOpen(true)
     } else if (action === 'help') {
-      window.alert('CAD gorunumunde iki parmakla yakinlastirabilir, surukleyerek gezebilir ve alt olcum araclariyla mesafe/alan/nokta olcebilirsiniz.')
+      window.alert('CAD görünümünde iki parmakla yakınlaştırabilir, sürükleyerek gezebilir ve alt ölçüm araçlarıyla mesafe, alan ve nokta ölçebilirsiniz.')
     } else if (action === 'toggleAnnotations') {
       setHiddenLayers((current) => {
         const next = new Set(current)
         if (next.has('TEXT')) {
           next.delete('TEXT')
-          notify('Notasyonlar gosterildi.')
+          notify('Notasyonlar gösterildi.')
         } else {
           next.add('TEXT')
           notify('Notasyonlar gizlendi.')
@@ -2428,19 +2470,19 @@ function App() {
       })
     } else if (action === 'measureResults') {
       setMeasureOverlaysHidden((hidden) => {
-        notify(hidden ? 'Olcum sonuclari gosterildi.' : 'Olcum sonuclari gizlendi.')
+        notify(hidden ? 'Ölçüm sonuçları gösterildi.' : 'Ölçüm sonuçları gizlendi.')
         return !hidden
       })
     } else if (action === 'regen') {
       viewportRef.current?.fit()
       setDraftPoints([])
       setSnapPreview(null)
-      notify('Cizim yenilendi.')
+      notify('Çizim yenilendi.')
     } else if (action === 'open') {
       handlePickDevice()
     } else if (action === 'settings') {
       setSettingsPanelOpen((open) => !open)
-      notify('Yakalama ayarlari acildi.')
+      notify('Yakalama ayarları açıldı.')
     }
 
     setMenuOpen(false)
@@ -2517,7 +2559,7 @@ function App() {
       } else {
         setDrawModeOpen(false)
         setActiveDrawActionId(null)
-        notify('Cizim modu kapatildi.')
+        notify('Çizim modu kapatıldı.')
       }
     } else if (action === 'note') {
       setDrawModeOpen(false)
@@ -2579,12 +2621,15 @@ function App() {
         </>
       ) : (
       <section
+        ref={viewerRef}
         className="viewer fv-viewer mobile-viewer"
         style={
           {
             '--markup-color': activeMarkupColor,
             '--fv-chrome-bottom': chromeBottom,
             '--fv-top-chrome': '88px',
+            '--results-lift': `${resultsLift}px`,
+            '--snap-lift': `${snapLift}px`,
           } as CSSProperties
         }
       >
@@ -2594,8 +2639,10 @@ function App() {
           onClose={exitViewer}
           onAction={handleTopBarAction}
           onTextStyle={() => {
+            setActiveCategory(null)
+            setMeasurePanelOpen(false)
             setSettingsPanelOpen(true)
-            notify('Metin yuksekligi ayarlardan degisir.')
+            notify('Metin yüksekliği ayarlardan değişir.')
           }}
         />
 
@@ -2634,8 +2681,8 @@ function App() {
               ) : (
                 <div className="native-format-card">
                   <FileText size={36} />
-                  <strong>{error ? 'Dosya acilamadi' : 'Cizim yok'}</strong>
-                  <span>{error || 'Dosya acin veya Ornekler sekmesinden bir plan yukleyin.'}</span>
+                  <strong>{error ? 'Dosya açılamadı' : 'Çizim yok'}</strong>
+                  <span>{error || 'Dosya açın veya Örnekler sekmesinden bir plan yükleyin.'}</span>
                 </div>
               )}
 
@@ -2701,6 +2748,18 @@ function App() {
                   className="measure-capture"
                   onPointerDown={handleMeasurePointerDown}
                   onPointerMove={handleMeasurePointerMove}
+                  onPointerUp={() => {
+                    fingerDown.current = false
+                    setLoupe(null)
+                  }}
+                  onPointerCancel={() => {
+                    fingerDown.current = false
+                    setLoupe(null)
+                  }}
+                  onPointerLeave={() => {
+                    fingerDown.current = false
+                    setLoupe(null)
+                  }}
                 />
               )}
               {activeEditTool && (
@@ -2782,10 +2841,19 @@ function App() {
               records={measureRecords}
               unitLabel={unitLabel}
               unitsPerDrawingUnit={unitsPerDrawingUnit}
+              expanded={resultsExpanded}
+              onToggle={() => setResultsExpanded((open) => !open)}
               onDelete={(id) => setMeasureRecords((current) => current.filter((record) => record.id !== id))}
               onClear={() => setMeasureRecords([])}
-              onClose={() => setMeasurePanelOpen(false)}
-              onCalibrate={() => selectMeasureMode('calibration')}
+              onClose={() => {
+                setMeasurePanelOpen(false)
+                setResultsExpanded(false)
+              }}
+              onCalibrate={() => {
+                setMeasurePanelOpen(false)
+                setResultsExpanded(false)
+                selectMeasureMode('calibration')
+              }}
             />
           )}
 
@@ -2839,10 +2907,10 @@ function App() {
               onConfirm={() => {
                 notify(
                   colorMode === 'byLayer'
-                    ? 'Renk ByLayer olarak ayarlandi.'
+                    ? 'Renk ByLayer olarak ayarlandı.'
                     : colorMode === 'byBlock'
-                      ? 'Renk ByBlock olarak ayarlandi.'
-                      : 'Renk guncellendi.',
+                      ? 'Renk ByBlock olarak ayarlandı.'
+                      : 'Renk güncellendi.',
                 )
                 setColorModalOpen(false)
               }}
@@ -2854,14 +2922,14 @@ function App() {
               color={activeMarkupColor}
               onSelect={(color) => {
                 setActiveMarkupColor(color)
-                notify('Renk paleti guncellendi.')
+                notify('Renk paleti güncellendi.')
               }}
               onClose={() => setColorPanelOpen(false)}
             />
           )}
         </div>
 
-        {(activeMeasureMode || measurePanelOpen || settingsPanelOpen) && (
+        {activeMeasureMode && !resultsExpanded && (
           <SnapPanel settings={appSettings.snap} activeKind={snapPreview?.kind ?? null} onChange={updateSnapSettings} />
         )}
 
@@ -2874,7 +2942,7 @@ function App() {
 
         {notice && <div className="app-notice" role="status">{notice}</div>}
 
-        {!online && <p className="offline-banner">Offline mod: acilan dosyalar ve onbellek calisir.</p>}
+        {!online && <p className="offline-banner">Çevrimdışı: açılan dosyalar ve önbellek çalışır.</p>}
       </section>
       )}
 
@@ -2894,13 +2962,13 @@ function App() {
       )}
 
       {exportOpen && (
-        <div className="upgrade-sheet" role="dialog" aria-label="Disa aktar">
+        <div className="upgrade-sheet" role="dialog" aria-label="Dışa aktar">
           <div className="upgrade-card">
-            <h2>Disa aktar</h2>
-            <p className="upgrade-note">{pro ? 'Filigransiz PDF veya gorsel.' : 'Ucretsiz planda kucuk bir filigran eklenir.'}</p>
+            <h2>Dışa aktar</h2>
+            <p className="upgrade-note">{pro ? 'Filigransız PDF veya görsel.' : 'Ücretsiz planda küçük bir filigran eklenir.'}</p>
             <div className="upgrade-actions">
               <button type="button" onClick={() => { setExportOpen(false); void shareDrawing('pdf') }}>PDF</button>
-              <button type="button" onClick={() => { setExportOpen(false); void shareDrawing('png') }}>Gorsel</button>
+              <button type="button" onClick={() => { setExportOpen(false); void shareDrawing('png') }}>Görsel</button>
               <button type="button" className="upgrade-dismiss" onClick={() => setExportOpen(false)}>Kapat</button>
             </div>
           </div>
@@ -2912,8 +2980,8 @@ function App() {
           <div className="upgrade-card">
             <h2>Gizlilik</h2>
             <p className="upgrade-note">
-              Cizimler cihazinizda acilir. Son dosyalar yalnizca bu uygulamada saklanir. Bulut hesaplari ancak siz baglarsaniz kullanilir.
-              Satin alma kaydi Google Play tarafindan tutulur. Konum, rehber veya reklam kimligi toplanmaz.
+              Çizimler cihazınızda açılır. Son dosyalar yalnızca bu uygulamada saklanır. Bulut hesapları ancak siz bağlarsanız kullanılır.
+              Satın alma kaydı Google Play tarafından tutulur. Konum, rehber veya reklam kimliği toplanmaz.
             </p>
             <div className="upgrade-actions">
               <button type="button" onClick={() => setPrivacyOpen(false)}>Kapat</button>
@@ -2923,14 +2991,14 @@ function App() {
       )}
 
       {mediaPreview && (
-        <div className="upgrade-sheet" role="dialog" aria-label="Isaret">
+        <div className="upgrade-sheet" role="dialog" aria-label="İşaret">
           <div className="upgrade-card">
             <h2>{mediaPreview.label}</h2>
             {mediaPreview.imageUrl && <img src={mediaPreview.imageUrl} alt="" className="media-preview" />}
             {mediaPreview.audioUrl && <audio controls src={mediaPreview.audioUrl} />}
             {mediaPreview.videoUrl && <video controls src={mediaPreview.videoUrl} className="media-preview" />}
             {!mediaPreview.imageUrl && !mediaPreview.audioUrl && !mediaPreview.videoUrl && (
-              <p className="upgrade-note">Bu isaretin medya dosyasi yok.</p>
+              <p className="upgrade-note">Bu işaretin medya dosyası yok.</p>
             )}
             <div className="upgrade-actions">
               <button type="button" onClick={() => setMediaPreview(null)}>Kapat</button>

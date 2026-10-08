@@ -68,7 +68,7 @@ export async function refreshEntitlement(): Promise<Entitlement> {
 
 export async function purchasePro(): Promise<Entitlement> {
   if (!Capacitor.isNativePlatform()) {
-    throw new Error('Satin alma yalnizca Google Play uzerinden yuklenen Android uygulamasinda calisir.')
+    throw new Error('Satın alma yalnızca Google Play üzerinden yüklenen Android uygulamasında çalışır.')
   }
   const { NativePurchases, PURCHASE_TYPE } = await import('@capgo/native-purchases')
   const support = await NativePurchases.isBillingSupported()
@@ -99,12 +99,12 @@ export async function purchasePro(): Promise<Entitlement> {
 
 export async function restorePro(): Promise<Entitlement> {
   if (!Capacitor.isNativePlatform()) {
-    throw new Error('Geri yukleme yalnizca Android uygulamasinda kullanilir.')
+    throw new Error('Geri yükleme yalnızca Android uygulamasında kullanılır.')
   }
   const { NativePurchases } = await import('@capgo/native-purchases')
   await NativePurchases.restorePurchases()
   const entitlement = await refreshEntitlement()
-  if (!entitlement.pro) throw new Error('Bu hesapta Pro satin almasi bulunamadi.')
+  if (!entitlement.pro) throw new Error('Bu hesapta Pro satın alması bulunamadı.')
   return entitlement
 }
 

@@ -14,7 +14,7 @@ export async function buildOpenedFile(
   const format = getFormat(file.name)
 
   if (!format) {
-    return { ok: false, error: 'Sadece DWG, DXF, DWF ve PDF dosyalari acilabilir.' }
+    return { ok: false, error: 'Sadece DWG, DXF, DWF ve PDF dosyaları açılabilir.' }
   }
 
   if (!options?.skipRecent) {
@@ -33,7 +33,7 @@ export async function buildOpenedFile(
   if (format === 'dwf') {
     return {
       ok: false,
-      error: 'DWF bu surumde acilmiyor. Cizimi DWG veya DXF olarak kaydedip yeniden acin.',
+      error: 'DWF bu sürümde açılmıyor. Çizimi DWG veya DXF olarak kaydedip yeniden açın.',
     }
   }
 
@@ -47,7 +47,7 @@ export async function buildOpenedFile(
     if (!entities.length) {
       return {
         ok: false,
-        error: `${format.toUpperCase()} okundu (${document.version}) ama cizilecek nesne yok. Bu surum veya nesne tipleri desteklenmiyor olabilir.`,
+        error: `${format.toUpperCase()} okundu (${document.version}) ama çizilecek nesne yok. Bu sürüm veya nesne tipleri desteklenmiyor olabilir.`,
       }
     }
     const warning = document.warnings[0]
@@ -69,7 +69,7 @@ export async function buildOpenedFile(
       },
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Dosya okunamadi.'
+    const message = error instanceof Error ? error.message : 'Dosya okunamadı.'
     return { ok: false, error: message }
   }
 }

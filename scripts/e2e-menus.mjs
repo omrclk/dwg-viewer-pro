@@ -77,7 +77,7 @@ page.on('filechooser', async (chooser) => {
 
 try {
   await page.goto(base, { waitUntil: 'networkidle' })
-  await shot(page, 'v120-home')
+  await shot(page, 'v121-home')
   record('Ana sayfa', 'pass', 'Ev, Dosya ve Bulut görünür')
 
   const openFiles = page.getByRole('button', { name: 'Dosya', exact: true })
@@ -99,13 +99,13 @@ try {
   chooserMode = 'bad'
   await deviceButton.click()
   const openStatus = page.locator('.open-files-status')
-  await openStatus.getByText(/acilabilir|okunamadi|Desteklen/i).waitFor()
+  await openStatus.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
   if (await deviceButton.isDisabled()) throw new Error('Hatalı dosyadan sonra kilitli')
   record('Bozuk dosya', 'pass', 'Hata panelde kalır, seçici tekrar açılır')
 
   chooserMode = 'same'
   await deviceButton.click()
-  await openStatus.getByText(/acilabilir|okunamadi|Desteklen/i).waitFor()
+  await openStatus.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
   await deviceButton.click()
   await page.waitForTimeout(500)
   if (await deviceButton.isDisabled()) throw new Error('Aynı dosya ikinci kez seçilemedi')
@@ -118,7 +118,7 @@ try {
   await page.getByRole('button', { name: /Örnek plan\.dwg/ }).click()
   await page.locator('canvas.cad-canvas').waitFor({ timeout: 20000 })
   await page.waitForTimeout(600)
-  await shot(page, 'v120-sample-fit')
+  await shot(page, 'v121-sample-fit')
   record('Örnek DWG', 'pass', 'Tuval çizildi')
 
   const navCount = await page.locator('.fv-nav-item').count()
@@ -129,7 +129,7 @@ try {
     if (navLabel === 'Renk') {
       await page.getByRole('dialog', { name: /renk ayarı/i }).waitFor()
       await page.locator('.fv-color-swatches button').first().click()
-      await shot(page, 'v120-color')
+      await shot(page, 'v121-color')
       await page.getByRole('button', { name: 'Tamam' }).click()
       record('Renk', 'pass', 'Palet açıldı ve bir renk seçildi')
       continue
@@ -151,7 +151,7 @@ try {
       }
       if (navLabel === 'Katman' && label === 'Katman Listesi') {
         await page.getByRole('dialog', { name: 'Katman listesi' }).waitFor()
-        await shot(page, 'v120-layers')
+        await shot(page, 'v121-layers')
       }
       await dismissTransient(page)
       if ((await page.locator('.fv-sub-item').count()) === 0 && navLabel !== 'Renk') {
@@ -178,7 +178,7 @@ try {
   const drawnLines = page.locator('.sketch-overlay line')
   await drawnLines.first().waitFor()
   const drawnCount = await drawnLines.count()
-  await shot(page, 'v120-draw-line')
+  await shot(page, 'v121-draw-line')
   record('Çizgi çizme', 'pass', 'Sürüklenen çizgi tuvalde')
 
   await page.getByRole('button', { name: 'Geri al' }).click()
@@ -193,15 +193,25 @@ try {
   await dismissTransient(page)
   await page.getByRole('button', { name: 'Ölçüm' }).click()
   await page.getByRole('button', { name: 'Mesafe', exact: true }).click()
+  if (await page.locator('.fv-sub-panel').count()) throw new Error('Ölçüm sayfası araç seçilince kapanmadı')
   const measure = page.locator('.measure-capture')
   await measure.waitFor()
   const measureBox = await measure.boundingBox()
   if (!measureBox) throw new Error('Ölçüm alanı yok')
   await page.mouse.click(measureBox.x + 70, measureBox.y + 160)
+  await page.locator('.snap-panel').waitFor()
+  await page.locator('.touch-loupe').waitFor({ state: 'hidden', timeout: 1500 }).catch(() => undefined)
+  if (await page.locator('.touch-loupe').count()) throw new Error('Büyüteç parmak kalkınca ekranda kaldı')
+  await shot(page, 'v121-measure-snap')
   await page.mouse.click(measureBox.x + 240, measureBox.y + 300)
-  await page.waitForTimeout(300)
-  await shot(page, 'v120-measure')
-  record('Mesafe ölçümü', 'pass', 'İki nokta seçildi')
+  await page.getByRole('dialog', { name: 'Ölçümler' }).waitFor()
+  if (await page.locator('.fv-sub-panel').count()) throw new Error('Sonuç paneli menüyle birlikte açık')
+  if (await page.locator('.touch-loupe').count()) throw new Error('Büyüteç sonuç panelinin üstünde kaldı')
+  await shot(page, 'v121-measure')
+  await page.locator('.measure-results-toggle').click()
+  await page.getByRole('button', { name: 'Ölçek kalibre' }).waitFor()
+  await shot(page, 'v121-measure-list')
+  record('Mesafe ölçümü', 'pass', 'Menü kapandı, sonuçlar katlanmış şerit olarak duruyor')
 
   await dismissTransient(page)
   await page.getByRole('button', { name: 'Ek açıklama' }).click()
@@ -210,7 +220,7 @@ try {
   const textBox = await page.locator('.draw-capture').last().boundingBox()
   if (textBox) await page.mouse.click(textBox.x + 120, textBox.y + 180)
   await page.waitForTimeout(200)
-  await shot(page, 'v120-text')
+  await shot(page, 'v121-text')
   record('Metin notu', 'pass', 'Not çizime yerleştirildi')
 
   if (await page.locator('.fv-sub-panel').count()) {
@@ -221,9 +231,9 @@ try {
   const settings = page.locator('.settings-panel')
   await settings.waitFor()
   await settings.getByRole('button', { name: 'Tema' }).click()
-  await shot(page, 'v120-settings')
+  await shot(page, 'v121-settings')
   record('Ayarlar ve tema', 'pass', 'Tema düğmesi çalıştı')
-  await page.getByRole('button', { name: 'Ayarlari kapat' }).click()
+  await page.getByRole('button', { name: 'Ayarları kapat' }).click()
 
   await page.getByRole('button', { name: 'Sığdır' }).click()
   await page.getByRole('button', { name: 'Yakınlaştır' }).click()

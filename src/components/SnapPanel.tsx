@@ -13,7 +13,7 @@ export function SnapPanel({
   onChange: (next: SnapSettings) => void
 }) {
   return (
-    <div className="snap-panel" aria-label="Snap secenekleri">
+    <div className="snap-panel" aria-label="Yakalama seçenekleri">
       <label className="snap-master">
         <input
           type="checkbox"

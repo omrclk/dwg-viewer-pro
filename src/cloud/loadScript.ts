@@ -16,7 +16,7 @@ export function loadScript(src: string, id?: string): Promise<void> {
       if (id) loaded.add(id)
       resolve()
     }
-    script.onerror = () => reject(new Error(`Script yuklenemedi: ${src}`))
+    script.onerror = () => reject(new Error(`Betik yüklenemedi: ${src}`))
     document.head.appendChild(script)
   })
 }

@@ -139,5 +139,5 @@ export function snapKindLabel(kind: SnapKind) {
   if (kind === 'endpoint') return 'Uç nokta'
   if (kind === 'midpoint') return 'Orta nokta'
   if (kind === 'center') return 'Merkez'
-  return 'Kesisim'
+  return 'Kesişim'
 }

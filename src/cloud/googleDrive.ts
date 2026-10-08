@@ -38,7 +38,7 @@ function loadPickerApi(): Promise<void> {
     loadScript('https://apis.google.com/js/api.js', 'google-api')
       .then(() => {
         if (!window.gapi) {
-          reject(new Error('Google API yuklenemedi'))
+          reject(new Error('Google API yüklenemedi'))
           return
         }
         window.gapi.load('picker', () => resolve())
@@ -62,12 +62,12 @@ async function requestAccessToken(clientId: string): Promise<string> {
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (response) => {
         if (response.access_token) resolve(response.access_token)
-        else reject(new Error(response.error ?? 'Google oturumu acilamadi'))
+        else reject(new Error(response.error ?? 'Google oturumu açılamadı'))
       },
     })
 
     if (!tokenClient) {
-      reject(new Error('Google Identity yuklenemedi'))
+      reject(new Error('Google Identity yüklenemedi'))
       return
     }
 
@@ -92,7 +92,7 @@ async function downloadDriveFile(fileId: string, fileName: string, token: string
   })
 
   if (!response.ok) {
-    throw new Error('Google Drive dosyasi indirilemedi')
+    throw new Error('Google Drive dosyası indirilemedi')
   }
 
   const blob = await response.blob()
@@ -109,7 +109,7 @@ export async function pickGoogleDriveFile(): Promise<File> {
   const apiKey = import.meta.env.VITE_GOOGLE_API_KEY
 
   if (!clientId || !apiKey) {
-    throw new Error('Google Drive icin VITE_GOOGLE_CLIENT_ID ve VITE_GOOGLE_API_KEY tanimlayin (.env)')
+    throw new Error('Google Drive için VITE_GOOGLE_CLIENT_ID ve VITE_GOOGLE_API_KEY tanimlayin (.env)')
   }
 
   const [token] = await Promise.all([requestAccessToken(clientId), loadPickerApi()])
@@ -132,7 +132,7 @@ export async function pickGoogleDriveFile(): Promise<File> {
         const file = await downloadDriveFile(doc.id, doc.name, token, doc.mimeType)
         resolve(file)
       } catch (error) {
-        reject(error instanceof Error ? error : new Error('Google Drive dosyasi alinamadi'))
+        reject(error instanceof Error ? error : new Error('Google Drive dosyası alınamadı'))
       }
     })
     const picker = (builder as { build: () => { setVisible: (v: boolean) => void } }).build()

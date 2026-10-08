@@ -27,7 +27,7 @@ export function isDropboxConfigured() {
 export async function pickDropboxFile(): Promise<File> {
   const appKey = import.meta.env.VITE_DROPBOX_APP_KEY
   if (!appKey) {
-    throw new Error('Dropbox icin VITE_DROPBOX_APP_KEY tanimlayin (.env)')
+    throw new Error('Dropbox için VITE_DROPBOX_APP_KEY tanimlayin (.env)')
   }
 
   await loadScript('https://www.dropbox.com/static/api/2/dropins.js', 'dropbox-dropins')
@@ -37,7 +37,7 @@ export async function pickDropboxFile(): Promise<File> {
 
   return new Promise((resolve, reject) => {
     if (!window.Dropbox) {
-      reject(new Error('Dropbox Chooser yuklenemedi'))
+      reject(new Error('Dropbox Chooser yüklenemedi'))
       return
     }
 
@@ -46,14 +46,14 @@ export async function pickDropboxFile(): Promise<File> {
         try {
           const picked = files[0]
           const response = await fetch(picked.link)
-          if (!response.ok) throw new Error('Dropbox dosyasi indirilemedi')
+          if (!response.ok) throw new Error('Dropbox dosyası indirilemedi')
           const blob = await response.blob()
           resolve(new File([blob], picked.name, { type: blob.type || 'application/octet-stream' }))
         } catch (error) {
-          reject(error instanceof Error ? error : new Error('Dropbox dosyasi alinamadi'))
+          reject(error instanceof Error ? error : new Error('Dropbox dosyası alınamadı'))
         }
       },
-      cancel: () => reject(new Error('Dropbox secimi iptal edildi')),
+      cancel: () => reject(new Error('Dropbox seçimi iptal edildi')),
       linkType: 'direct',
       multiselect: false,
       extensions: ['.dwg', '.dxf', '.dwf', '.pdf'],

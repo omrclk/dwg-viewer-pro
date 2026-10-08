@@ -252,7 +252,7 @@ public class MainActivity extends BridgeActivity {
         }
         File dir = new File(getCacheDir(), "incoming");
         if (!dir.exists() && !dir.mkdirs()) {
-            throw new IllegalStateException("Onbellek klasoru acilamadi.");
+            throw new IllegalStateException("Önbellek klasörü açılamadı.");
         }
         File[] older = dir.listFiles();
         if (older != null) {
@@ -263,7 +263,7 @@ public class MainActivity extends BridgeActivity {
         File out = new File(dir, "open-" + System.currentTimeMillis() + ".bin");
         try (InputStream input = getContentResolver().openInputStream(uri);
              FileOutputStream output = new FileOutputStream(out)) {
-            if (input == null) throw new IllegalStateException("Dosya okunamadi.");
+            if (input == null) throw new IllegalStateException("Dosya okunamadı.");
             byte[] buffer = new byte[64 * 1024];
             int read;
             while ((read = input.read(buffer)) != -1) {
@@ -277,7 +277,7 @@ public class MainActivity extends BridgeActivity {
         String sniffed = DrawingSniffer.sniffExtension(bytes);
         displayName = DrawingSniffer.ensureFileName(displayName, mimeType, sniffed);
         if (!DrawingSniffer.isDrawingName(displayName)) {
-            throw new IllegalArgumentException("Paylasilan dosya DWG, DXF veya PDF degil.");
+            throw new IllegalArgumentException("Paylaşılan dosya DWG, DXF veya PDF değil.");
         }
         Log.d(TAG, "Resolved name: " + displayName + ", Mime: " + mimeType + ", sniff: " + sniffed);
         JSONObject payload = new JSONObject();
@@ -315,7 +315,7 @@ public class MainActivity extends BridgeActivity {
     private void dispatchOpenError(Exception exception) {
         JSONObject payload = new JSONObject();
         try {
-            payload.put("message", "Dosya acilamadi: " + exception.getMessage());
+            payload.put("message", "Dosya açılamadı: " + exception.getMessage());
         } catch (Exception ignored) {}
         dispatchWindowEvent(OPEN_ERROR_EVENT, payload, 400);
     }
@@ -404,7 +404,7 @@ public class MainActivity extends BridgeActivity {
                     Log.e(TAG, "Native print failed", exception);
                     JSONObject payload = new JSONObject();
                     try {
-                        payload.put("message", "Yazdirma acilamadi: " + exception.getMessage());
+                        payload.put("message", "Yazdırma açılamadı: " + exception.getMessage());
                     } catch (Exception ignored) {}
                     dispatchWindowEvent(OPEN_ERROR_EVENT, payload, 0);
                 }

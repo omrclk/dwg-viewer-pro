@@ -32,13 +32,13 @@ export function ThumbToolbar({
   const actions: ThumbAction[] = [
     { id: 'zoom-in', label: 'Yakin', icon: ZoomIn, onClick: onZoomIn },
     { id: 'zoom-out', label: 'Uzak', icon: ZoomOut, onClick: onZoomOut },
-    { id: 'fit', label: 'Sigdir', icon: Maximize, onClick: onFit },
+    { id: 'fit', label: 'Sığdır', icon: Maximize, onClick: onFit },
     { id: 'open', label: 'Ac', icon: FolderOpen, onClick: onOpen, primary: true },
     { id: 'measure', label: 'Olc', icon: Ruler, onClick: onMeasure, active: measureActive, primary: true },
   ]
 
   return (
-    <div className="thumb-toolbar" aria-label="Tek elle arac cubugu">
+    <div className="thumb-toolbar" aria-label="Tek elle araç çubuğu">
       <div className="thumb-toolbar-cluster">
         {actions.map((action) => (
           <button
