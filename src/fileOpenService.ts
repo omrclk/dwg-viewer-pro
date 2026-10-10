@@ -1,6 +1,8 @@
 import type { FileSource, OpenedFile } from './fileTypes'
 import { getFormat } from './fileTypes'
-import { addRecentFile } from './recentFiles'
+import { formatCadVersion, originLabel } from './fileListFormat'
+import { addRecentFile, saveThumbnail } from './recentFiles'
+import { renderDrawingThumbnail } from './fileThumb'
 
 export type OpenFileResult =
   | { ok: true; file: OpenedFile; objectUrl?: string }
@@ -9,7 +11,7 @@ export type OpenFileResult =
 export async function buildOpenedFile(
   file: File,
   source: FileSource,
-  options?: { skipRecent?: boolean },
+  options?: { skipRecent?: boolean; sourcePath?: string; origin?: string },
 ): Promise<OpenFileResult> {
   const format = getFormat(file.name)
 
@@ -17,11 +19,16 @@ export async function buildOpenedFile(
     return { ok: false, error: 'Sadece DWG, DXF, DWF ve PDF dosyaları açılabilir.' }
   }
 
-  if (!options?.skipRecent) {
-    await addRecentFile(file, format, source)
+  const remember = async (versionLabel?: string) => {
+    if (options?.skipRecent) return null
+    return addRecentFile(file, format, source, {
+      versionLabel,
+      origin: originLabel(source, options?.sourcePath, options?.origin),
+    })
   }
 
   if (format === 'pdf') {
+    await remember('PDF')
     const objectUrl = URL.createObjectURL(file)
     return {
       ok: true,
@@ -31,6 +38,7 @@ export async function buildOpenedFile(
   }
 
   if (format === 'dwf') {
+    await remember('DWF')
     return {
       ok: false,
       error: 'DWF bu sürümde açılmıyor. Çizimi DWG veya DXF olarak kaydedip yeniden açın.',
@@ -44,10 +52,21 @@ export async function buildOpenedFile(
     const model = document.layouts.find((item) => item.isModel && item.entities.length)
     const layout = model ?? [...document.layouts].sort((a, b) => b.entities.length - a.entities.length)[0]
     const entities = layout?.entities ?? []
+    const versionLabel = formatCadVersion(document.version, format)
     if (!entities.length) {
+      await remember(versionLabel)
       return {
         ok: false,
         error: `${format.toUpperCase()} okundu (${document.version}) ama çizilecek nesne yok. Bu sürüm veya nesne tipleri desteklenmiyor olabilir.`,
+      }
+    }
+    const entry = await remember(versionLabel)
+    if (entry) {
+      try {
+        const thumb = await renderDrawingThumbnail(entities)
+        if (thumb) await saveThumbnail(entry.id, thumb)
+      } catch {
+        /* preview is optional */
       }
     }
     const warning = document.warnings[0]
@@ -69,6 +88,7 @@ export async function buildOpenedFile(
       },
     }
   } catch (error) {
+    await remember()
     const message = error instanceof Error ? error.message : 'Dosya okunamadı.'
     return { ok: false, error: message }
   }

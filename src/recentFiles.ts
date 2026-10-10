@@ -1,8 +1,10 @@
 import type { FileSource, RecentFileEntry, SupportedFormat } from './fileTypes'
+import { formatTurkishDateTime } from './fileListFormat'
 
 const RECENT_STORAGE_KEY = 'dwg-viewer-recent-files'
 const DB_NAME = 'dwg-viewer-file-cache'
 const DB_STORE = 'files'
+const THUMB_STORE = 'thumbs'
 const MAX_RECENT = 20
 const MAX_CACHE_BYTES = 48 * 1024 * 1024
 
@@ -14,11 +16,14 @@ type CachedFile = {
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
+    const request = indexedDB.open(DB_NAME, 2)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(DB_STORE)) {
         db.createObjectStore(DB_STORE, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(THUMB_STORE)) {
+        db.createObjectStore(THUMB_STORE, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => resolve(request.result)
@@ -86,7 +91,12 @@ export async function loadCachedFile(id: string): Promise<File | null> {
   }
 }
 
-export async function addRecentFile(file: File, format: SupportedFormat, source: FileSource) {
+export async function addRecentFile(
+  file: File,
+  format: SupportedFormat,
+  source: FileSource,
+  extra?: { versionLabel?: string; origin?: string },
+) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
   const cached = await cacheFileForRecent(id, file)
   const entry: RecentFileEntry = {
@@ -97,6 +107,8 @@ export async function addRecentFile(file: File, format: SupportedFormat, source:
     source,
     openedAt: new Date().toISOString(),
     cached,
+    versionLabel: extra?.versionLabel,
+    origin: extra?.origin,
   }
 
   const withoutDuplicate = readRecentList().filter(
@@ -104,6 +116,41 @@ export async function addRecentFile(file: File, format: SupportedFormat, source:
   )
   writeRecentList([entry, ...withoutDuplicate])
   return entry
+}
+
+export function updateRecentFile(id: string, patch: Partial<Pick<RecentFileEntry, 'name' | 'favorite' | 'versionLabel' | 'origin'>>) {
+  writeRecentList(readRecentList().map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
+}
+
+export async function saveThumbnail(id: string, dataUrl: string) {
+  try {
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(THUMB_STORE, 'readwrite')
+      tx.objectStore(THUMB_STORE).put({ id, dataUrl })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  } catch {
+    /* preview is optional */
+  }
+}
+
+export async function loadThumbnail(id: string): Promise<string | null> {
+  try {
+    const db = await openDb()
+    const record = await new Promise<{ id: string; dataUrl: string } | undefined>((resolve, reject) => {
+      const tx = db.transaction(THUMB_STORE, 'readonly')
+      const request = tx.objectStore(THUMB_STORE).get(id)
+      request.onsuccess = () => resolve(request.result as { id: string; dataUrl: string } | undefined)
+      request.onerror = () => reject(request.error)
+    })
+    db.close()
+    return record?.dataUrl ?? null
+  } catch {
+    return null
+  }
 }
 
 export function toggleRecentFavorite(id: string) {
@@ -133,14 +180,5 @@ export function clearRecentFiles() {
 }
 
 export function formatRecentTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleString('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  return formatTurkishDateTime(iso)
 }

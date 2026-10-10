@@ -121,7 +121,7 @@ export function OpenFilesPanel({
                   <strong>{entry.name}</strong>
                   <small>
                     {sourceLabel(entry.source)} · {formatBytes(entry.size)} · {formatRecentTime(entry.openedAt)}
-                    {!entry.cached && ' · Yeniden sec'}
+                    {!entry.cached && ' · Yeniden seç'}
                   </small>
                 </span>
               </button>

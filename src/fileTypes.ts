@@ -26,6 +26,8 @@ export type RecentFileEntry = {
   openedAt: string
   cached: boolean
   favorite?: boolean
+  versionLabel?: string
+  origin?: string
 }
 
 export const SUPPORTED_EXTENSIONS = ['dwg', 'dxf', 'dwf', 'pdf'] as const

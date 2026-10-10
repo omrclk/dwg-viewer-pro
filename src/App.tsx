@@ -19,7 +19,7 @@ import { buildOpenedFile } from './fileOpenService'
 import type { FileSource, OpenedFile, RecentFileEntry } from './fileTypes'
 import { formatBytes, sourceLabel } from './fileTypes'
 import { OpenFilesPanel } from './OpenFilesPanel'
-import { listRecentFiles, loadCachedFile, toggleRecentFavorite } from './recentFiles'
+import { listRecentFiles, loadCachedFile } from './recentFiles'
 import { applyCamera, boundsForEntities, buildDxfTransform, gestureDelta } from './dxfTransform'
 import {
   actionIdToDrawTool,
@@ -1652,7 +1652,7 @@ function App() {
     if (result.ok === false) {
       setError(result.error)
       setOpenStatus(result.error)
-      setOpenPanelOpen(true)
+      if (screen === 'viewer') setOpenPanelOpen(true)
       return
     }
 
@@ -1673,11 +1673,11 @@ function App() {
     setRecentList(listRecentFiles())
   }
 
-  const openFromFile = async (file: File, source: FileSource, skipRecent = false, sourcePath?: string) => {
+  const openFromFile = async (file: File, source: FileSource, skipRecent = false, sourcePath?: string, origin?: string) => {
     setFileBusy(true)
     setOpenStatus('Dosya açılıyor...')
     try {
-      const result = await buildOpenedFile(file, source, { skipRecent })
+      const result = await buildOpenedFile(file, source, { skipRecent, sourcePath, origin })
       applyOpenResult(result)
       if (result.ok) {
         setOpenedPath(sourcePath || `${sourceLabel(source)} > ${file.name}`)
@@ -1828,17 +1828,18 @@ function App() {
     await openFromFile(file, 'device', false, `Telefon dosyaları > ${file.name}`)
   }
 
-  const handlePickDevice = async () => {
+  const handlePickDevice = async (explicitOrigin?: string) => {
     setFileBusy(true)
     setOpenStatus('')
     try {
       const file = await pickFileFromSource('device')
-      await openFromFile(file, 'device', false, `Telefon dosyaları > ${file.name}`)
+      const origin = typeof explicitOrigin === 'string' ? explicitOrigin : 'Cihaz'
+      await openFromFile(file, 'device', false, `${origin} > ${file.name}`, origin)
     } catch (pickError) {
       const message = pickError instanceof Error ? pickError.message : 'Dosya seçilemedi'
       if (message.toLocaleLowerCase('tr').includes('seçilmedi') || message.toLocaleLowerCase('tr').includes('secilmedi') || message.toLocaleLowerCase('tr').includes('iptal')) {
         setOpenStatus('Seçim iptal edildi. Yeniden deneyebilirsiniz.')
-        setOpenPanelOpen(true)
+        if (screen === 'viewer') setOpenPanelOpen(true)
       } else setError(message)
     } finally {
       setFileBusy(false)
@@ -2593,16 +2594,23 @@ function App() {
         <>
           <FastViewHome
             recentFiles={recentList}
-            onOpenFile={() => setOpenPanelOpen(true)}
-            onOpenRecent={handleOpenRecent}
-            onToggleFavorite={(entry) => {
-              toggleRecentFavorite(entry.id)
-              setRecentList(listRecentFiles())
+            fileBusy={fileBusy}
+            statusMessage={openStatus || undefined}
+            pro={pro}
+            onPickDevice={(origin) => {
+              void handlePickDevice(origin)
             }}
+            onPickCloud={(provider) => {
+              void handlePickCloud(provider)
+            }}
+            onOpenRecent={handleOpenRecent}
             onOpenSample={(format) => {
               void openSample(format)
             }}
             onEnterViewer={enterViewer}
+            onRefresh={() => setRecentList(listRecentFiles())}
+            onOpenPrivacy={() => setPrivacyOpen(true)}
+            onUpgrade={() => setUpgradeOpen(true)}
           />
           {openPanelOpen && (
             <OpenFilesPanel

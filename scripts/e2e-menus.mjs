@@ -77,49 +77,96 @@ page.on('filechooser', async (chooser) => {
 
 try {
   await page.goto(base, { waitUntil: 'networkidle' })
-  await shot(page, 'v121-home')
+  await page.getByRole('button', { name: 'Hesap' }).waitFor()
+  if (await page.locator('.fv-home-avatar:not(button)').count()) throw new Error('Boş avatar duruyor')
+  await shot(page, 'v122-home')
   record('Ana sayfa', 'pass', 'Ev, Dosya ve Bulut görünür')
 
-  const openFiles = page.getByRole('button', { name: 'Dosya', exact: true })
-  await openFiles.click()
-  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
-  await page.getByRole('button', { name: 'Kapat' }).click()
-  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor({ state: 'hidden' })
-  await openFiles.click()
-  await page.getByRole('dialog', { name: 'Dosya aç' }).waitFor()
-  record('Dosya aç paneli', 'pass', 'Kapatıldıktan sonra yeniden açılır')
+  await page.getByRole('button', { name: 'Hesap' }).click()
+  await page.getByRole('dialog', { name: 'Hesap' }).waitFor()
+  await shot(page, 'v122-account')
+  await page.getByRole('dialog', { name: 'Hesap' }).getByRole('button', { name: 'Kapat' }).click()
+
+  await page.getByRole('button', { name: 'Bulut', exact: true }).click()
+  await page.getByRole('heading', { name: 'Bulut' }).waitFor()
+  const drive = page.getByRole('button', { name: /Google Drive/ })
+  await drive.waitFor()
+  if (await drive.isEnabled()) throw new Error('Anahtarsız Google Drive açık kaldı')
+  if (!(await drive.innerText()).includes('Yakında')) throw new Error('Yakında yazısı yok')
+  if (await page.getByRole('heading', { name: 'Cihaz' }).count()) throw new Error('Bulut, Cihaz ekranını açtı')
+  if ((await page.getByRole('button', { name: 'Bulut', exact: true }).getAttribute('aria-current')) !== 'page') {
+    throw new Error('Bulut sekmesi seçili değil')
+  }
+  await shot(page, 'v122-cloud')
+  record('Bulut sekmesi', 'pass', 'Kaynaklar Yakında, Dosya ekranından ayrı')
+
+  await page.getByRole('button', { name: 'Dosya', exact: true }).click()
+  await page.getByRole('heading', { name: 'Cihaz' }).waitFor()
+  if (await page.getByRole('heading', { name: 'Bulut' }).count()) throw new Error('Dosya, Bulut ekranını açtı')
+  if ((await page.getByRole('button', { name: 'Dosya', exact: true }).getAttribute('aria-current')) !== 'page') {
+    throw new Error('Dosya sekmesi seçili değil')
+  }
+  await shot(page, 'v122-files')
+  record('Dosya sekmesi', 'pass', 'Cihaz deposu ekranı')
 
   chooserMode = 'cancel'
-  await page.getByRole('button', { name: 'Cihazdan aç' }).click()
-  await page.getByText(/iptal|Yeniden/i).waitFor()
   const deviceButton = page.getByRole('button', { name: 'Cihazdan aç' })
+  await deviceButton.click()
+  await page.getByText(/iptal|Yeniden/i).waitFor()
   if (await deviceButton.isDisabled()) throw new Error('Cihazdan aç iptal sonrası kilitli')
   record('Dosya seçici iptali', 'pass', 'İptal mesajı görünür, düğme yeniden etkin')
 
   chooserMode = 'bad'
   await deviceButton.click()
-  const openStatus = page.locator('.open-files-status')
-  await openStatus.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
+  await page.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
   if (await deviceButton.isDisabled()) throw new Error('Hatalı dosyadan sonra kilitli')
-  record('Bozuk dosya', 'pass', 'Hata panelde kalır, seçici tekrar açılır')
+  record('Bozuk dosya', 'pass', 'Hata mesajı görünür, seçici tekrar açılır')
 
   chooserMode = 'same'
   await deviceButton.click()
-  await openStatus.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
+  await page.getByText(/açılabilir|okunamadı|Desteklen/i).waitFor()
   await deviceButton.click()
   await page.waitForTimeout(500)
   if (await deviceButton.isDisabled()) throw new Error('Aynı dosya ikinci kez seçilemedi')
   record('Aynı dosyayı yeniden seçme', 'pass', 'İkinci seçim de tamamlandı')
-
-  await page.getByRole('button', { name: 'Kapat' }).click()
   chooserMode = 'cancel'
 
+  await page.getByRole('button', { name: 'Ev', exact: true }).click()
+  await page.getByRole('tab', { name: 'Son' }).waitFor()
+  if ((await page.getByRole('button', { name: 'Ev', exact: true }).getAttribute('aria-current')) !== 'page') {
+    throw new Error('Ev sekmesi seçili değil')
+  }
+  record('Ev sekmesi', 'pass', 'Son listesi ve seçili Ev')
+
   await page.getByRole('tab', { name: 'Örnekler' }).click()
-  await page.getByRole('button', { name: /Örnek plan\.dwg/ }).click()
+  await page.getByRole('button', { name: /örnek-plan\.dwg/ }).click()
   await page.locator('canvas.cad-canvas').waitFor({ timeout: 20000 })
   await page.waitForTimeout(600)
-  await shot(page, 'v121-sample-fit')
+  await shot(page, 'v122-sample-fit')
   record('Örnek DWG', 'pass', 'Tuval çizildi')
+
+  await page.evaluate(() => window.__dwgOnBack?.())
+  const recentRow = page.locator('.fv-file-row').first()
+  await recentRow.waitFor()
+  await recentRow.locator('img.fv-file-thumb').waitFor({ timeout: 20000 })
+  const rowText = await recentRow.innerText()
+  if (!rowText.includes('.dwg')) throw new Error(`Dosya adı uzantıyı göstermiyor: ${rowText}`)
+  if (!/DWG/.test(rowText)) throw new Error('DWG rozeti yok')
+  if (!/AutoCAD/.test(rowText)) throw new Error('DWG sürümü yok')
+  if (!/\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}/.test(rowText)) throw new Error(`Tarih Türkçe değil: ${rowText}`)
+  await recentRow.getByRole('button', { name: /menüsü/ }).click()
+  await page.getByRole('menuitem', { name: 'Dosya bilgisi' }).waitFor()
+  await page.getByRole('menuitem', { name: 'Favorilere ekle' }).waitFor()
+  await page.getByRole('menuitem', { name: 'Paylaş' }).waitFor()
+  await page.getByRole('menuitem', { name: 'Listeden kaldır' }).waitFor()
+  await page.getByRole('menuitem', { name: 'Yeniden adlandır' }).waitFor()
+  await shot(page, 'v122-recent')
+  await page.getByRole('menuitem', { name: 'Dosya bilgisi' }).click()
+  await page.getByRole('dialog', { name: 'Dosya bilgisi' }).waitFor()
+  await page.getByRole('dialog', { name: 'Dosya bilgisi' }).getByRole('button', { name: 'Kapat' }).click()
+  record('Son dosyalar', 'pass', 'Küçük resim, sürüm, tarih ve menü')
+  await recentRow.locator('.fv-file-open').click()
+  await page.locator('canvas.cad-canvas').waitFor({ timeout: 20000 })
 
   const navCount = await page.locator('.fv-nav-item').count()
   for (let index = 0; index < navCount; index += 1) {
@@ -129,7 +176,7 @@ try {
     if (navLabel === 'Renk') {
       await page.getByRole('dialog', { name: /renk ayarı/i }).waitFor()
       await page.locator('.fv-color-swatches button').first().click()
-      await shot(page, 'v121-color')
+      await shot(page, 'v122-color')
       await page.getByRole('button', { name: 'Tamam' }).click()
       record('Renk', 'pass', 'Palet açıldı ve bir renk seçildi')
       continue
@@ -151,7 +198,7 @@ try {
       }
       if (navLabel === 'Katman' && label === 'Katman Listesi') {
         await page.getByRole('dialog', { name: 'Katman listesi' }).waitFor()
-        await shot(page, 'v121-layers')
+        await shot(page, 'v122-layers')
       }
       await dismissTransient(page)
       if ((await page.locator('.fv-sub-item').count()) === 0 && navLabel !== 'Renk') {
@@ -178,7 +225,7 @@ try {
   const drawnLines = page.locator('.sketch-overlay line')
   await drawnLines.first().waitFor()
   const drawnCount = await drawnLines.count()
-  await shot(page, 'v121-draw-line')
+  await shot(page, 'v122-draw-line')
   record('Çizgi çizme', 'pass', 'Sürüklenen çizgi tuvalde')
 
   await page.getByRole('button', { name: 'Geri al' }).click()
@@ -202,15 +249,15 @@ try {
   await page.locator('.snap-panel').waitFor()
   await page.locator('.touch-loupe').waitFor({ state: 'hidden', timeout: 1500 }).catch(() => undefined)
   if (await page.locator('.touch-loupe').count()) throw new Error('Büyüteç parmak kalkınca ekranda kaldı')
-  await shot(page, 'v121-measure-snap')
+  await shot(page, 'v122-measure-snap')
   await page.mouse.click(measureBox.x + 240, measureBox.y + 300)
   await page.getByRole('dialog', { name: 'Ölçümler' }).waitFor()
   if (await page.locator('.fv-sub-panel').count()) throw new Error('Sonuç paneli menüyle birlikte açık')
   if (await page.locator('.touch-loupe').count()) throw new Error('Büyüteç sonuç panelinin üstünde kaldı')
-  await shot(page, 'v121-measure')
+  await shot(page, 'v122-measure')
   await page.locator('.measure-results-toggle').click()
   await page.getByRole('button', { name: 'Ölçek kalibre' }).waitFor()
-  await shot(page, 'v121-measure-list')
+  await shot(page, 'v122-measure-list')
   record('Mesafe ölçümü', 'pass', 'Menü kapandı, sonuçlar katlanmış şerit olarak duruyor')
 
   await dismissTransient(page)
@@ -220,7 +267,7 @@ try {
   const textBox = await page.locator('.draw-capture').last().boundingBox()
   if (textBox) await page.mouse.click(textBox.x + 120, textBox.y + 180)
   await page.waitForTimeout(200)
-  await shot(page, 'v121-text')
+  await shot(page, 'v122-text')
   record('Metin notu', 'pass', 'Not çizime yerleştirildi')
 
   if (await page.locator('.fv-sub-panel').count()) {
@@ -231,7 +278,7 @@ try {
   const settings = page.locator('.settings-panel')
   await settings.waitFor()
   await settings.getByRole('button', { name: 'Tema' }).click()
-  await shot(page, 'v121-settings')
+  await shot(page, 'v122-settings')
   record('Ayarlar ve tema', 'pass', 'Tema düğmesi çalıştı')
   await page.getByRole('button', { name: 'Ayarları kapat' }).click()
 
