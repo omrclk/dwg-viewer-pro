@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Secrets and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.apk
+*.aab
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
