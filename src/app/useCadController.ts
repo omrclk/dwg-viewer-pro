@@ -130,6 +130,12 @@ const MEASURE_HINTS: Record<Exclude<MeasureMode, null>, string> = {
 }
 
 
+const LOADING_STATUS = /(?:açılıyor|hazırlanıyor|yükleniyor|bağlanıyor)\.\.\.$/
+
+function isLoadingStatus(message: string) {
+  return LOADING_STATUS.test(message)
+}
+
 export function useCadController() {
   const inputRef = useRef<HTMLInputElement>(null)
   const lastUrlRef = useRef<string | null>(null)
@@ -265,6 +271,11 @@ export function useCadController() {
     [entityLimit, openedFile?.entities],
   )
   const measureHint = activeMeasureMode ? MEASURE_HINTS[activeMeasureMode] : ''
+
+  useEffect(() => {
+    if (fileBusy) return
+    setOpenStatus((current) => (isLoadingStatus(current) ? '' : current))
+  }, [fileBusy])
 
   useEffect(() => {
     document.documentElement.classList.toggle('theme-dark', appSettings.theme === 'dark')
@@ -1057,6 +1068,8 @@ export function useCadController() {
 
   const exitViewer = () => {
     setScreen('home')
+    setFileBusy(false)
+    setOpenStatus((current) => (isLoadingStatus(current) ? '' : current))
     setOpenedFile(null)
     setOpenedPath('')
     setActiveCategory(null)
@@ -1111,6 +1124,7 @@ export function useCadController() {
       }
     } catch {
       setError('Dosya açılırken hata oluştu.')
+      setOpenStatus('Dosya açılırken hata oluştu.')
     } finally {
       setFileBusy(false)
     }

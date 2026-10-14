@@ -34,6 +34,8 @@ export type DrawingEntity =
       boxWidth?: number
       lineSpacing?: number
       lines?: TextRun[][]
+      /** Model text whose stored height follows an annotation scale. */
+      annotative?: boolean
     }
   | { type: 'solid'; layer: string; points: Point2[]; color?: string }
 

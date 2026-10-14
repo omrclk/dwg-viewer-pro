@@ -56,6 +56,16 @@ describe('drawing extents', () => {
     expect(bounds).toEqual({ minX: 0, minY: 0, maxX: 120, maxY: 80 })
   })
 
+  it('keeps a far text anchor from stretching the plan', () => {
+    const bounds = boundsForEntities([
+      { type: 'line', layer: '0', x1: 0, y1: 0, x2: 100, y2: 0 },
+      { type: 'line', layer: '0', x1: 0, y1: 0, x2: 0, y2: 40 },
+      { type: 'text', layer: '0', x: 1e7, y: 1e7, text: 'UZAK', height: 5000, rotation: 0 },
+    ])
+    expect(bounds.maxX).toBeLessThan(200)
+    expect(bounds.maxY).toBeLessThan(80)
+  })
+
   it('ignores a stale header box that is orders of magnitude too large', () => {
     const bounds = boundsForEntities(
       [{ type: 'line', layer: '0', x1: 0, y1: 0, x2: 100, y2: 50 }],

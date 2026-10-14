@@ -22,22 +22,27 @@ export function isUsableBounds(bounds: Bounds | null | undefined): bounds is Bou
 }
 
 function geometryPoints(entities: DrawingEntity[]) {
-  const points: Array<{ x: number; y: number }> = []
+  const geometry: Array<{ x: number; y: number }> = []
+  const text: Array<{ x: number; y: number }> = []
   entities.forEach((entity) => {
     if (entity.type === 'line') {
-      points.push({ x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 })
+      geometry.push({ x: entity.x1, y: entity.y1 }, { x: entity.x2, y: entity.y2 })
     } else if (entity.type === 'circle' || entity.type === 'arc') {
-      points.push(
+      geometry.push(
         { x: entity.cx - entity.r, y: entity.cy - entity.r },
         { x: entity.cx + entity.r, y: entity.cy + entity.r },
       )
     } else if (entity.type === 'polyline' || entity.type === 'solid') {
-      points.push(...entity.points)
+      geometry.push(...entity.points)
     } else if (entity.type === 'text') {
-      points.push({ x: entity.x, y: entity.y })
+      text.push({ x: entity.x, y: entity.y })
     }
   })
-  return points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Math.abs(point.x) < 1e12 && Math.abs(point.y) < 1e12)
+  const finite = (point: { x: number; y: number }) => Number.isFinite(point.x) && Number.isFinite(point.y) && Math.abs(point.x) < 1e12 && Math.abs(point.y) < 1e12
+  const drawn = geometry.filter(finite)
+  // Text anchors must not pull the view. A title sitting on the plan is already
+  // inside the geometry; a stray or wrongly scaled label is not.
+  return drawn.length ? drawn : text.filter(finite)
 }
 
 function iqrFence(sorted: number[]) {
