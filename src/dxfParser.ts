@@ -62,7 +62,6 @@ function styleOf(group: Group, layers: Map<string, DrawingLayerInfo>) {
     ? layerInfo?.color
     : aciColor(Math.abs(colorIndex))
   const lineType = str(group, '6', '')
-  const dash = dashForLineType(lineType || layerInfo?.name)
   return { layer, color, dash: dashForLineType(lineType) ?? undefined }
 }
 

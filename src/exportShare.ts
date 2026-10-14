@@ -155,7 +155,7 @@ async function shareOrDownload(blob: Blob, filename: string, mime: string) {
       binary += String.fromCharCode(...raw.subarray(index, index + 0x8000))
     }
     const data = btoa(binary)
-    const path = filename
+    const path = `exports/${filename}`
     await Filesystem.writeFile({ path, data, directory: Directory.Cache })
     const uri = await Filesystem.getUri({ path, directory: Directory.Cache })
     await Share.share({ title: filename, url: uri.uri, dialogTitle: 'DWG Viewer Pro' })

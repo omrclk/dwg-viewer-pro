@@ -116,7 +116,7 @@ export async function pickGoogleDriveFile(): Promise<File> {
 
   return new Promise((resolve, reject) => {
     if (!window.google?.picker) {
-      reject(new Error('Google Picker kullanilamiyor'))
+      reject(new Error('Google Picker kullanılamıyor'))
       return
     }
 

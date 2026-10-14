@@ -83,6 +83,10 @@ keytool -genkeypair -v -keystore dwg-viewer-upload.jks -alias upload -keyalg RSA
 
 Eklenti: `@capgo/native-purchases`. Satın alma otomatik onaylanır. “Satın almayı geri yükle” Play hesabındaki hakkı yeniden okur.
 
+Uygulama açılınca Android’de `restorePurchases()` çağrılır ve hak `getPurchases` ile yeniden okunur. Play yanıt verirse yerel kayıt bu sonuca göre yazılır veya silinir. Fatura desteklenmiyorsa ya da cihaz çevrimdışıysa son Play kaydı durur; böylece satın alınmış kurulum ağ olmadan da açılır. Web önizlemesi `localStorage` içindeki kaydı yok sayar.
+
+Bu kayıt sunucuda doğrulanmaz. Mağaza sürümünde satın alma jetonunu kendi sunucunuza gönderip [Google Play Developer API](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.products/get) `purchases.products.get` ile kontrol edin. `purchaseState` satın alınmış olmalı, ürün kimliği `com.dwgviewer.pro.unlock` olmalı ve iptal edilmiş jeton reddedilmelidir. Uygulama Pro’yu ancak sunucu onayından sonra açmalıdır. İstemci tarafındaki kayıt yalnızca çevrimdışı önbellek olarak kalır.
+
 ## Bulut
 
 Google Drive, OneDrive ve Dropbox düğmeleri yalnızca ilgili anahtarlar varsa görünür. Anahtar yoksa düğme yoktur.
