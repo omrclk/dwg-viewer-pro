@@ -1,6 +1,7 @@
 import type { DrawingDocument, DrawingEntity, DrawingExtents, DrawingLayerInfo, Point2, TextHAlign, TextVAlign } from '../drawingTypes'
 import { dashForLineType, orderSolidPoints, rgbCss, sampleEllipse, tessellatePolyline } from './geometry'
 import { parseMText, plainMText } from './mtext'
+import { fitTextEntities } from './textFit'
 
 type CadLike = {
   header?: { version?: number; modelSpaceExtMin?: Xyz; modelSpaceExtMax?: Xyz } | null
@@ -79,6 +80,8 @@ type EntityLike = {
   constantWidth?: number
   startWidth?: number
   style?: { height?: number; width?: number; obliqueAngle?: number; lastHeight?: number } | null
+  isAnnotative?: boolean
+  mText?: EntityLike | null
   pattern?: { name?: string } | null
   paths?: Array<{ getPoints?: (precision?: number) => Xyz[] }>
   isSolid?: boolean
@@ -158,7 +161,9 @@ function positive(value: number | undefined) {
 }
 
 function resolveTextHeight(entity: EntityLike) {
-  return positive(entity.height) ?? positive(entity.style?.height) ?? positive(entity.style?.lastHeight) ?? 2.5
+  // A zero TEXT height means "use the style's fixed height". lastHeight is only
+  // the height last typed into the style, so it must not become the glyph size.
+  return positive(entity.height) ?? positive(entity.style?.height) ?? 2.5
 }
 
 function textAlign(horizontal: number, vertical: number): { halign: TextHAlign; valign: TextVAlign } {
@@ -286,15 +291,16 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
   }
 
   if (name === 'TEXT' || name === 'ATTDEF' || name === 'ATTRIB') {
-    const lines = parseMText(entity.value ?? '')
-    const text = plainMText(entity.value ?? '')
+    const formatted = entity.mText?.value ? entity.mText : entity
+    const lines = parseMText(formatted.value ?? '')
+    const text = plainMText(formatted.value ?? entity.value ?? '')
     if (!text) return []
     const horizontal = entity.horizontalAlignment ?? 0
     const vertical = entity.verticalAlignment ?? 0
     const useAlignment = horizontal !== 0 || vertical !== 0
     const anchor = (useAlignment ? entity.alignmentPoint : undefined) ?? entity.insertPoint ?? entity.center
     const align = textAlign(horizontal, vertical)
-    const height = resolveTextHeight(entity)
+    const height = positive(entity.height) ? resolveTextHeight(entity) : resolveTextHeight(formatted)
     const widthFactor = positive(entity.widthFactor) ?? positive(entity.style?.width) ?? 1
     const oblique = radiansToDegrees(entity.obliqueAngle ?? entity.style?.obliqueAngle ?? 0)
     return [{
@@ -311,6 +317,7 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
       halign: align.halign,
       valign: align.valign,
       lineSpacing: 1,
+      ...(entity.isAnnotative || formatted.isAnnotative ? { annotative: true } : {}),
     }]
   }
 
@@ -337,6 +344,7 @@ function flattenEntity(entity: EntityLike, depth: number, stack: string[], warni
       valign: align.valign,
       ...(boxWidth ? { boxWidth } : {}),
       lineSpacing: positive(entity.lineSpacing) ?? 1,
+      ...(entity.isAnnotative ? { annotative: true } : {}),
     }]
   }
 
@@ -473,7 +481,7 @@ export function flattenCadDocument(doc: CadLike, format: 'dwg' | 'dxf'): Drawing
   const warnings: string[] = []
   const layers = asArray(doc.layers).map(layerInfo)
   const layouts = layoutsOf(doc).map((layout) => {
-    const entities = asArray(layout.block.entities).flatMap((entity) => flattenEntity(entity, 0, [], warnings))
+    const entities = fitTextEntities(asArray(layout.block.entities).flatMap((entity) => flattenEntity(entity, 0, [], warnings)))
     return { name: layout.name, isModel: layout.isModel, entities }
   })
   if (!layouts.length) {

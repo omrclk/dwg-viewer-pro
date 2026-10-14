@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Incoming shares are copied here before the WebView reads them. -->
+    <cache-path name="incoming" path="incoming/" />
+    <!-- PDF and image exports written by the Filesystem plugin. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

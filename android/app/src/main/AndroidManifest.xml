@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -57,7 +57,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:host="*" />
                 <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.dwg" />
                 <data android:pathPattern=".*\\..*\\.dwg" />
                 <data android:pathPattern=".*\\..*\\..*\\.dwg" />
@@ -137,7 +136,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="*/*" />
                 <data android:sspPattern=".*\\.dwg" />
                 <data android:sspPattern=".*\\..*\\.dwg" />
                 <data android:sspPattern=".*\\..*\\..*\\.dwg" />
@@ -201,7 +199,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="file" android:host="*" />
                 <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="*/*" />
                 <data android:pathPattern=".*\\.dwg" />
                 <data android:pathPattern=".*\\..*\\.dwg" />
                 <data android:pathPattern=".*\\..*\\..*\\.dwg" />
@@ -251,7 +248,6 @@
                 <data android:mimeType="image/vnd.dxf" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="*/*" />
             </intent-filter>
 
         </activity>
@@ -272,5 +268,4 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 </manifest>

@@ -4,7 +4,6 @@ import {
   arcPathFromThreePoints,
   arrowHeadPoints,
   rectFromCorners,
-  type DrawTool,
   type SketchShape,
 } from './drawTools'
 import { distance } from './measureMath'

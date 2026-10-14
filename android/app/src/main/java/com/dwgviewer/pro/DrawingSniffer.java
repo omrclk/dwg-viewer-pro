@@ -48,7 +48,13 @@ public final class DrawingSniffer {
         if (lowerMime.contains("pdf")) return name + ".pdf";
         if (lowerMime.contains("dxf")) return name + ".dxf";
         if (lowerMime.contains("dwf")) return name + ".dwf";
-        if (lowerMime.contains("dwg") || lowerMime.contains("acad") || lowerMime.contains("octet-stream")) return name + ".dwg";
+        if (lowerMime.contains("dwg") || lowerMime.contains("acad")) return name + ".dwg";
         return name;
+    }
+
+    /** Magic bytes win. A bare octet-stream name is not treated as DWG. */
+    public static boolean acceptsSharedBytes(String displayName, String sniffed) {
+        if (sniffed != null && !sniffed.isEmpty()) return true;
+        return isDrawingName(displayName);
     }
 }

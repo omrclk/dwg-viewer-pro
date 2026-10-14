@@ -1,6 +1,7 @@
 import type { DrawingDocument, DrawingEntity, DrawingLayerInfo, Point2, TextHAlign, TextVAlign } from './drawingTypes'
 import { aciColor, dashForLineType, orderSolidPoints, sampleEllipse, tessellatePolyline } from './cad/geometry'
 import { parseMText, plainMText } from './cad/mtext'
+import { fitTextEntities } from './cad/textFit'
 
 type Pair = [string, string]
 type Group = { type: string; pairs: Pair[] }
@@ -62,7 +63,6 @@ function styleOf(group: Group, layers: Map<string, DrawingLayerInfo>) {
     ? layerInfo?.color
     : aciColor(Math.abs(colorIndex))
   const lineType = str(group, '6', '')
-  const dash = dashForLineType(lineType || layerInfo?.name)
   return { layer, color, dash: dashForLineType(lineType) ?? undefined }
 }
 
@@ -107,7 +107,9 @@ function mtextCodes(attachment: number): { halign: TextHAlign; valign: TextVAlig
   }
 }
 
-function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): DrawingEntity | null {
+type TextStyleInfo = { height: number; width: number }
+
+function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>, styles: Map<string, TextStyleInfo>): DrawingEntity | null {
   const style = styleOf(group, layers)
 
   if (group.type === 'LINE') {
@@ -173,7 +175,12 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
     const x = justified && Number.isFinite(alignX) ? alignX : num(group, '10')
     const y = justified && Number.isFinite(alignY) ? alignY : num(group, '20')
     const align = textCodes(horizontal, vertical)
-    const widthFactor = num(group, '41', 1) || 1
+    const named = styles.get(str(group, '7').toUpperCase())
+    const rawHeight = num(group, '40', Number.NaN)
+    const styleHeight = named?.height ?? 0
+    const height = rawHeight > 1e-8 ? rawHeight : styleHeight > 1e-8 ? styleHeight : 2.5
+    const rawWidth = num(group, '41', Number.NaN)
+    const widthFactor = rawWidth > 1e-8 ? rawWidth : named?.width && named.width > 1e-8 ? named.width : 1
     return {
       type: 'text',
       layer: style.layer,
@@ -181,7 +188,7 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
       y,
       text,
       lines,
-      height: Math.max(1e-4, num(group, '40', 2.5)),
+      height,
       rotation: num(group, '50'),
       widthFactor,
       oblique: num(group, '51'),
@@ -204,6 +211,10 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
       : (num(group, '50') * 180) / Math.PI
     const align = mtextCodes(num(group, '71', 1))
     const boxWidth = num(group, '41')
+    const named = styles.get(str(group, '7').toUpperCase())
+    const rawHeight = num(group, '40', Number.NaN)
+    const styleHeight = named?.height ?? 0
+    const height = rawHeight > 1e-8 ? rawHeight : styleHeight > 1e-8 ? styleHeight : 2.5
     return {
       type: 'text',
       layer: style.layer,
@@ -211,13 +222,13 @@ function entityFromGroup(group: Group, layers: Map<string, DrawingLayerInfo>): D
       y: num(group, '20'),
       text,
       lines,
-      height: Math.max(1e-4, num(group, '40', 2.5)),
+      height,
       rotation,
       halign: align.halign,
       valign: align.valign,
       ...(boxWidth > 0 ? { boxWidth } : {}),
       lineSpacing: num(group, '44', 1) || 1,
-      widthFactor: 1,
+      widthFactor: named?.width && named.width > 1e-8 ? named.width : 1,
       color: style.color,
     }
   }
@@ -406,6 +417,7 @@ function polylineGroup(vertices: Group[], closed: boolean, layers: Map<string, D
 export function parseDxfDocument(text: string): DrawingDocument {
   const groups = groupsFromPairs(pairsFromText(text))
   const layers = new Map<string, DrawingLayerInfo>()
+  const styles = new Map<string, TextStyleInfo>()
   const blocks = new Map<string, BlockDef>()
   const model: DrawingEntity[] = []
   const modelInserts: InsertRef[] = []
@@ -445,6 +457,11 @@ export function parseDxfDocument(text: string): DrawingDocument {
     }
     if (group.type === 'ENDTAB') {
       table = ''
+      return
+    }
+    if (group.type === 'STYLE') {
+      const name = str(group, '2', 'STANDARD').toUpperCase()
+      styles.set(name, { height: num(group, '40'), width: num(group, '41', 1) || 1 })
       return
     }
     if (group.type === 'LAYER' && (section === 'TABLES' || table === 'LAYER')) {
@@ -505,7 +522,7 @@ export function parseDxfDocument(text: string): DrawingDocument {
     }
     if (STRUCTURAL.has(group.type)) return
 
-    const entity = entityFromGroup(group, layers)
+    const entity = entityFromGroup(group, layers, styles)
     if (!entity) {
       if (!['VIEWPORT', 'IMAGE', 'WIPEOUT', 'OLE2FRAME', 'REGION', 'BODY', '3DSOLID', 'ACAD_PROXY_ENTITY'].includes(group.type)) {
         warnings.push(group.type)
@@ -522,6 +539,8 @@ export function parseDxfDocument(text: string): DrawingDocument {
     if (!placed.length) warnings.push(`INSERT ${insert.name}`)
     model.push(...placed)
   })
+  const fitted = fitTextEntities(model)
+  model.splice(0, model.length, ...fitted)
 
   if (!layers.size) {
     ;[...new Set(model.map((entity) => entity.layer))].forEach((name) => {

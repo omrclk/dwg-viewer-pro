@@ -11,8 +11,34 @@ function looksLikeAsciiDxf(bytes: Uint8Array) {
   return head.startsWith('0') || head.startsWith('999') || head.includes('SECTION')
 }
 
+type AttributeInsert = { applyAttributeTransform?: (attribute: unknown) => void }
+type AttributeTemplate = { cadObject?: AttributeInsert; _build: (builder: unknown) => void; __dwgAttributeFix?: boolean }
+
+/**
+ * acad-ts applies the insert transform again while loading ATTRIB entities.
+ * The file already stores them in world space (ACadSharp does not transform
+ * them on read), so a scaled block stamp was drawn many times too large.
+ */
+export function keepFileAttributePlacement(template: { prototype: AttributeTemplate }) {
+  const proto = template.prototype
+  if (proto.__dwgAttributeFix) return
+  const original = proto._build
+  proto._build = function buildWithoutAttributeRescale(this: { cadObject?: AttributeInsert }, builder: unknown) {
+    const insert = this.cadObject
+    const apply = insert?.applyAttributeTransform
+    if (insert && apply) insert.applyAttributeTransform = () => undefined
+    try {
+      return original.call(this, builder)
+    } finally {
+      if (insert && apply) insert.applyAttributeTransform = apply
+    }
+  }
+  proto.__dwgAttributeFix = true
+}
+
 export async function readDrawingBytes(bytes: Uint8Array, format: 'dwg' | 'dxf'): Promise<DrawingDocument> {
   const acad = await import('@node-projects/acad-ts')
+  keepFileAttributePlacement(acad.CadInsertTemplate as unknown as { prototype: AttributeTemplate })
   const notes: string[] = []
   try {
     const doc = format === 'dwg'

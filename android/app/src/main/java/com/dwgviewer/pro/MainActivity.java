@@ -241,7 +241,7 @@ public class MainActivity extends BridgeActivity {
         try (FileInputStream input = new FileInputStream(cached)) {
             bytes = readStream(input);
         }
-        return payloadFromBytes(bytes, displayName, mimeType, "Paylasim > " + displayName);
+        return payloadFromBytes(bytes, displayName, mimeType, "Paylaşım > " + displayName);
     }
 
     private File copyUriToCache(Uri uri, int grantFlags) throws Exception {
@@ -276,8 +276,8 @@ public class MainActivity extends BridgeActivity {
     private JSONObject payloadFromBytes(byte[] bytes, String displayName, String mimeType, String sourcePath) throws Exception {
         String sniffed = DrawingSniffer.sniffExtension(bytes);
         displayName = DrawingSniffer.ensureFileName(displayName, mimeType, sniffed);
-        if (!DrawingSniffer.isDrawingName(displayName)) {
-            throw new IllegalArgumentException("Paylaşılan dosya DWG, DXF veya PDF değil.");
+        if (!DrawingSniffer.acceptsSharedBytes(displayName, sniffed)) {
+            throw new IllegalArgumentException("Bu dosya DWG, DXF veya PDF değil. Yalnızca çizim dosyaları açılır.");
         }
         Log.d(TAG, "Resolved name: " + displayName + ", Mime: " + mimeType + ", sniff: " + sniffed);
         JSONObject payload = new JSONObject();

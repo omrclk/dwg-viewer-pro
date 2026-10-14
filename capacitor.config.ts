@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'DWG Viewer Pro',
   webDir: 'dist',
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
     backgroundColor: '#000000',
     captureInput: true,
     adjustMarginsForEdgeToEdge: 'disable',

@@ -82,6 +82,48 @@ try {
   await shot(page, 'v122-home')
   record('Ana sayfa', 'pass', 'Ev, Dosya ve Bulut görünür')
 
+  const assertFits = async (width, label) => {
+    await page.setViewportSize({ width, height: 800 })
+    await page.waitForTimeout(40)
+    const metrics = await page.evaluate(() => {
+      const root = document.documentElement
+      const home = document.querySelector('.fv-home')
+      const shell = document.querySelector('.dwg-shell')
+      return {
+        scroll: root.scrollWidth,
+        client: root.clientWidth,
+        homeScroll: home ? home.scrollWidth : 0,
+        homeClient: home ? home.clientWidth : 0,
+        homeWidth: home ? home.getBoundingClientRect().width : 0,
+        shellWidth: shell ? shell.getBoundingClientRect().width : 0,
+      }
+    })
+    if (metrics.scroll > metrics.client + 1) {
+      throw new Error(`${label} ${width}px yatay kaydırma ${metrics.scroll}>${metrics.client}`)
+    }
+    if (metrics.homeScroll > metrics.homeClient + 1) {
+      throw new Error(`${label} ${width}px içerik taşıyor ${metrics.homeScroll}>${metrics.homeClient}`)
+    }
+    if (Math.abs(metrics.homeWidth - metrics.client) > 1 || Math.abs(metrics.shellWidth - metrics.client) > 1) {
+      throw new Error(`${label} ${width}px genişlik ${metrics.homeWidth}/${metrics.shellWidth} beklenen ${metrics.client}`)
+    }
+  }
+  for (const width of [360, 393, 430]) {
+    await page.getByRole('button', { name: 'Ev', exact: true }).click()
+    await page.getByRole('tab', { name: 'Son' }).click()
+    await assertFits(width, 'Son')
+    await page.getByRole('tab', { name: 'Favori' }).click()
+    await assertFits(width, 'Favori')
+    await page.getByRole('tab', { name: 'Örnekler' }).click()
+    await assertFits(width, 'Örnekler')
+    await page.getByRole('button', { name: 'Dosya', exact: true }).click()
+    await page.getByRole('heading', { name: 'Cihaz' }).waitFor()
+    await assertFits(width, 'Dosya')
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Ev', exact: true }).click()
+  record('Ekran genişliği', 'pass', '360, 393 ve 430 pikselde yatay taşma yok')
+
   await page.getByRole('button', { name: 'Hesap' }).click()
   await page.getByRole('dialog', { name: 'Hesap' }).waitFor()
   await shot(page, 'v122-account')
@@ -146,6 +188,7 @@ try {
   record('Örnek DWG', 'pass', 'Tuval çizildi')
 
   await page.evaluate(() => window.__dwgOnBack?.())
+  if (await page.getByText('Dosya açılıyor...').count()) throw new Error('Dosya açılıyor bannerı açık kaldı')
   const recentRow = page.locator('.fv-file-row').first()
   await recentRow.waitFor()
   await recentRow.locator('img.fv-file-thumb').waitFor({ timeout: 20000 })

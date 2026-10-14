@@ -34,11 +34,21 @@ function saveEntitlement(entitlement: Entitlement) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entitlement))
 }
 
-function playPurchaseIsOwned(purchase: { productIdentifier?: string; purchaseState?: string; purchaseToken?: string }) {
+export function playPurchaseIsOwned(purchase: { productIdentifier?: string; purchaseState?: string; purchaseToken?: string }) {
   if (purchase.productIdentifier !== BILLING_PRODUCTS.proUnlock) return false
   if (!purchase.purchaseToken) return false
   if (purchase.purchaseState && purchase.purchaseState !== '1') return false
   return true
+}
+
+export function entitlementFromOwnedPurchase(purchase?: { purchaseToken?: string }): Entitlement {
+  if (!purchase?.purchaseToken) return emptyEntitlement
+  return {
+    pro: true,
+    productId: BILLING_PRODUCTS.proUnlock,
+    purchaseToken: purchase.purchaseToken,
+    source: 'play',
+  }
 }
 
 export async function refreshEntitlement(): Promise<Entitlement> {
@@ -48,19 +58,30 @@ export async function refreshEntitlement(): Promise<Entitlement> {
     const support = await NativePurchases.isBillingSupported()
     if (!support.isBillingSupported) return loadEntitlement()
     const result = await NativePurchases.getPurchases({ productType: PURCHASE_TYPE.INAPP })
-    const owned = result.purchases.find(playPurchaseIsOwned)
-    if (!owned?.purchaseToken) {
-      saveEntitlement(emptyEntitlement)
-      return emptyEntitlement
-    }
-    const entitlement: Entitlement = {
-      pro: true,
-      productId: BILLING_PRODUCTS.proUnlock,
-      purchaseToken: owned.purchaseToken,
-      source: 'play',
-    }
+    const entitlement = entitlementFromOwnedPurchase(result.purchases.find(playPurchaseIsOwned))
     saveEntitlement(entitlement)
     return entitlement
+  } catch {
+    return loadEntitlement()
+  }
+}
+
+/**
+ * Ask Play for the current account's purchases before trusting the on-device cache.
+ * Offline or unsupported billing keeps the last Play cache so a purchased install
+ * still opens without a network. Web builds never honor localStorage.
+ */
+export async function verifyEntitlementOnStartup(): Promise<Entitlement> {
+  if (!Capacitor.isNativePlatform()) {
+    saveEntitlement(emptyEntitlement)
+    return emptyEntitlement
+  }
+  try {
+    const { NativePurchases } = await import('@capgo/native-purchases')
+    const support = await NativePurchases.isBillingSupported()
+    if (!support.isBillingSupported) return loadEntitlement()
+    await NativePurchases.restorePurchases()
+    return refreshEntitlement()
   } catch {
     return loadEntitlement()
   }
@@ -73,7 +94,7 @@ export async function purchasePro(): Promise<Entitlement> {
   const { NativePurchases, PURCHASE_TYPE } = await import('@capgo/native-purchases')
   const support = await NativePurchases.isBillingSupported()
   if (!support.isBillingSupported) {
-    throw new Error('Bu cihazda Google Play Billing kullanilamiyor.')
+    throw new Error('Bu cihazda Google Play Billing kullanılamıyor.')
   }
   const transaction = await NativePurchases.purchaseProduct({
     productIdentifier: BILLING_PRODUCTS.proUnlock,
@@ -82,7 +103,7 @@ export async function purchasePro(): Promise<Entitlement> {
     autoAcknowledgePurchases: true,
   })
   if (!playPurchaseIsOwned(transaction) && transaction.purchaseState && transaction.purchaseState !== '1') {
-    throw new Error('Odeme tamamlanmadi.')
+    throw new Error('Ödeme tamamlanmadı.')
   }
   const entitlement: Entitlement = {
     pro: true,

@@ -44,4 +44,15 @@ public class DrawingSnifferTest {
         assertFalse(DrawingSniffer.isDrawingName("item/123"));
         assertTrue(DrawingSniffer.isDrawingName("plan.DXF"));
     }
+
+    @Test
+    public void octetStreamWithoutCadHeaderIsNotForcedToDwg() {
+        assertEquals("foto.jpg", DrawingSniffer.ensureFileName("foto.jpg", "application/octet-stream", ""));
+        assertEquals("not", DrawingSniffer.ensureFileName("not", "application/octet-stream", ""));
+        assertFalse(DrawingSniffer.acceptsSharedBytes("not", ""));
+        assertFalse(DrawingSniffer.acceptsSharedBytes("foto.jpg", ""));
+        assertTrue(DrawingSniffer.acceptsSharedBytes("not", ".dwg"));
+        assertTrue(DrawingSniffer.acceptsSharedBytes("plan.dwg", ""));
+        assertEquals("plan.dwg", DrawingSniffer.ensureFileName("plan.bin", "application/octet-stream", ".dwg"));
+    }
 }

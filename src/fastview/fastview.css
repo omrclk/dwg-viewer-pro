@@ -119,7 +119,7 @@
   top: calc(var(--safe-top, 0px) + 56px);
   right: calc(var(--safe-right, 0px) + 8px);
   z-index: 120;
-  width: min(248px, calc(100vw - 16px));
+  width: min(248px, calc(100% - 16px));
   background: rgba(50, 52, 52, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
@@ -460,13 +460,19 @@
 
 /* ── Home screen ── */
 .fv-home {
-  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
   background: #fff;
   color: #222;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
   font-family: Roboto, 'Segoe UI', Arial, sans-serif;
+  box-sizing: border-box;
 }
 
 .fv-home-header {
@@ -513,9 +519,17 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-width: 0;
   font-size: 17px;
   font-weight: 600;
   color: #333;
+}
+
+.fv-home-brand > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fv-home-version {
@@ -568,7 +582,9 @@
 
 .fv-home-content {
   flex: 1;
-  overflow: auto;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-bottom: 64px;
 }
 
@@ -899,8 +915,8 @@
 
 .fv-home-bottom {
   position: fixed;
-  left: var(--safe-left, 0px);
-  right: var(--safe-right, 0px);
+  left: 0;
+  right: 0;
   bottom: var(--safe-bottom, 0px);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
